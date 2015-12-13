@@ -3,7 +3,7 @@
 
 name:                sudbury
 version:             0.1.0.0
-synopsis:            Haskell implementation of the wayland protocol
+synopsis:            Implementation of the wayland protocol
 description:
   The @libwayland@ library is a C implementation of the wayland protocol.
   This library intends to prove that the wayland protocol can also be implemented in Haskell,
