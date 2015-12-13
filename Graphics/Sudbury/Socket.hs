@@ -7,6 +7,7 @@ Maintainer  : auke@tulcod.com
 Stability   : experimental
 Portability : POSIX
 -}
+{-# LANGUAGE Trustworthy #-}
 module Graphics.Sudbury.Socket where
 
 import System.Environment (getEnv)

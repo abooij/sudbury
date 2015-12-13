@@ -6,6 +6,7 @@ License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 -}
+{-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Graphics.Sudbury.Argument where
 

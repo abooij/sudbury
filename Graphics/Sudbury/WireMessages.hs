@@ -6,6 +6,7 @@ License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 -}
+{-# LANGUAGE Safe #-}
 module Graphics.Sudbury.WireMessages where
 
 import Data.Fixed

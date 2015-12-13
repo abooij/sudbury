@@ -6,6 +6,7 @@ License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 -}
+{-# LANGUAGE Safe #-}
 module Graphics.Sudbury.Protocol.Types where
 
 import Graphics.Sudbury.Argument

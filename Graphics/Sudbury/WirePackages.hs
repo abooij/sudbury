@@ -7,6 +7,7 @@ Maintainer  : auke@tulcod.com
 Stability   : experimental
 Portability : POSIX
 -}
+{-# LANGUAGE Safe #-}
 module Graphics.Sudbury.WirePackages where
 
 import Data.Word

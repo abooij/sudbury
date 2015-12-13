@@ -11,6 +11,7 @@ Portability : POSIX
 The parsers in "Data.Attoparsec.Binary" are not quite sufficient for our use
 case: we need to parse words in host endianness, and parse ints.
 -}
+{-# LANGUAGE Safe #-}
 module Graphics.Sudbury.Internal where
 
 import Data.Word

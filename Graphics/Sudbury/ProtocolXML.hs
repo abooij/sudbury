@@ -7,9 +7,9 @@ Maintainer  : auke@tulcod.com
 Stability   : experimental
 Portability : POSIX
 -}
+{-# LANGUAGE Safe #-}
 module Graphics.Sudbury.ProtocolXML where
 
-import Debug.Trace
 import Control.Monad (filterM)
 import Data.List (find)
 import Data.Maybe (fromMaybe, listToMaybe)
@@ -84,7 +84,6 @@ parseDescription elt = do
 parseInterface :: XML.Element -> XML.Element -> Maybe WLInterface
 parseInterface doc elt = do
   name <- XML.findAttr (qname "name") elt
-  trace name $ return ()
   description <- parseDescription elt
   let version  = fromMaybe 0 (XML.findAttr (qname "version") elt >>= readMaybe)
       since    = fromMaybe 1 (XML.findAttr (qname "since") elt >>= readMaybe)
