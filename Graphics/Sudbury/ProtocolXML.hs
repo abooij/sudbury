@@ -17,76 +17,8 @@ import Text.Read (readMaybe)
 import qualified Text.XML.Light as XML
 import System.Process
 
-type WLDescription = (String , String)
-
-data WLProtocol = WLProtocol
-  { protocolName :: String
-  , protocolDescription :: Maybe WLDescription
-  , protocolInterfaces :: [WLInterface]
-  , protocolCopyright :: Maybe String
-  } deriving (Eq, Show)
-
-data WLInterface = WLInterface
-  { interfaceName :: String
-  , interfaceDescription :: Maybe WLDescription
-  , interfaceVersion :: Int
-  , interfaceSince :: Int
-  , interfaceRequests :: [WLMessage]
-  , interfaceEvents :: [WLMessage]
-  , interfaceEnums :: [WLEnum]
-  }
--- The instances for `WLInterface` have to be written manually, to avoid loops
--- in our circular data structure.
--- This is because WLArgumentType refers back to WLInterface
-instance Eq WLInterface where
-  iface1 == iface2 =
-    (interfaceName iface1 == interfaceName iface2) &&
-    (interfaceVersion iface1 == interfaceVersion iface2)
-instance Show WLInterface where
-  show iface =
-    "WLInterface " ++
-    interfaceName iface ++
-    " (version " ++
-    show (interfaceVersion iface) ++
-    ")"
-
-data WLMessage = WLMessage
-  { messageName :: String
-  , messageArguments :: [WLArgument]
-  , messageIsDestructor :: Bool
-  , messageSince :: Int
-  , messageDescription :: Maybe WLDescription
-  } deriving (Eq, Show)
-
-data WLEnum = WLEnum
-  { enumName :: String
-  , enumEntries :: [WLEntry]
-  , enumBitfield :: Maybe Bool
-  , enumDescription :: Maybe WLDescription
-  } deriving (Eq, Show)
-
-data WLEntry = WLEntry
-  { entryName :: String
-  , entryValue :: Integer
-  , entrySummary :: Maybe String
-  } deriving (Eq, Show)
-
-data WLArgumentType = WLInt (Maybe WLEnum)
-                    | WLUInt (Maybe WLEnum)
-                    | WLFixed
-                    | WLString
-                    | WLObject (Maybe WLInterface)
-                    | WLNewId (Maybe WLInterface)
-                    | WLArray
-                    | WLFD
-                    deriving (Eq, Show)
-
-data WLArgument = WLArgument
-  { argumentName :: String
-  , argumentType :: WLArgumentType
-  , argumentNullable :: Bool
-  , argumentSummary :: Maybe String
-  } deriving (Eq, Show)
+import Graphics.Sudbury.Protocol.Types
+import Graphics.Sudbury.Argument
 
 qname :: String -> XML.QName
 qname name = XML.QName name Nothing Nothing
@@ -199,14 +131,14 @@ parseArgument enums doc elt = do
 
   let interface = XML.findAttr (qname "interface") elt >>= getInterface doc
   argtype <- case typestr of
-    "int"    -> return (WLInt enum)
-    "uint"   -> return (WLUInt enum)
-    "fixed"  -> return WLFixed
-    "string" -> return WLString
-    "object" -> return (WLObject interface)
-    "new_id" -> return (WLNewId interface)
-    "array"  -> return WLArray
-    "fd"     -> return WLFD
+    "int"    -> return $ ArgProtDataBox SIntWAT enum
+    "uint"   -> return $ ArgProtDataBox SUIntWAT enum
+    "fixed"  -> return $ ArgProtDataBox SFixedWAT ()
+    "string" -> return $ ArgProtDataBox SStringWAT ()
+    "object" -> return $ ArgProtDataBox SObjectWAT interface
+    "new_id" -> return $ ArgProtDataBox SNewIdWAT interface
+    "array"  -> return $ ArgProtDataBox SArrayWAT ()
+    "fd"     -> return $ ArgProtDataBox SFdWAT ()
     _        -> Nothing
   nullable <- case XML.findAttr (qname "allow-null") elt of
     Nothing      -> Just False

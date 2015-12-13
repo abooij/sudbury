@@ -15,8 +15,6 @@ import Data.ByteString.Lazy (toStrict)
 import Test.QuickCheck
 
 import Graphics.Sudbury.WirePackages
-import Graphics.Sudbury.WireMessages
-import Graphics.Sudbury.ProtocolXML
 
 instance Arbitrary B.ByteString where
   arbitrary = do

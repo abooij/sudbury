@@ -10,7 +10,6 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 
 import Graphics.Sudbury.WirePackages
-import Graphics.Sudbury.WireMessages
 
 import Arbitrary ()
 
