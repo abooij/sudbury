@@ -16,8 +16,12 @@ maintainer:          auke@tulcod.com
 -- copyright:
 category:            Graphics
 build-type:          Simple
--- extra-source-files:
+extra-source-files:  README.md, cbits/wayland-msg-handling.h
 cabal-version:       >=1.10
+
+source-repository head
+  type: git
+  location: git://github.com/tulcod/sudbury.git
 
 library
   exposed-modules:
