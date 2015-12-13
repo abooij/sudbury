@@ -25,14 +25,15 @@ source-repository head
 
 library
   exposed-modules:
-      Graphics.Sudbury.ProtocolXML
+      Graphics.Sudbury.Protocol.XML
+    , Graphics.Sudbury.Protocol.Types
     , Graphics.Sudbury.Socket
     , Graphics.Sudbury.Socket.Wayland
     , Graphics.Sudbury.WirePackages
     , Graphics.Sudbury.WireMessages
     , Graphics.Sudbury.Argument
-    , Graphics.Sudbury.Protocol.Types
     , Graphics.Sudbury.Internal
+    , Graphics.Sudbury.Object
   -- other-modules:
   -- other-extensions:
   build-depends:
@@ -47,6 +48,7 @@ library
     , attoparsec-binary >=0.2 && <1
     , cpu >=0.1 && <1
     , singletons >=2 && <3
+    , template-haskell >=2.8 && <3
   hs-source-dirs: .
   c-sources: cbits/wayland-msg-handling.c
   include-dirs: cbits

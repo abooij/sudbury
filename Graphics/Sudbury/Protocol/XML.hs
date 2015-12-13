@@ -8,7 +8,7 @@ Stability   : experimental
 Portability : POSIX
 -}
 {-# LANGUAGE Safe #-}
-module Graphics.Sudbury.ProtocolXML where
+module Graphics.Sudbury.Protocol.XML where
 
 import Control.Monad (filterM)
 import Data.List (find)
