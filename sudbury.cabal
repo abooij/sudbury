@@ -26,6 +26,8 @@ library
     , Graphics.Sudbury.Socket.Wayland
     , Graphics.Sudbury.WirePackages
     , Graphics.Sudbury.WireMessages
+    , Graphics.Sudbury.Argument
+    , Graphics.Sudbury.Protocol.Types
     , Graphics.Sudbury.Internal
   -- other-modules:
   -- other-extensions:
