@@ -34,6 +34,8 @@ library
     , Graphics.Sudbury.Argument
     , Graphics.Sudbury.Internal
     , Graphics.Sudbury.Object
+    , Graphics.Sudbury.State
+    , Graphics.Sudbury.Message
   -- other-modules:
   -- other-extensions:
   build-depends:
@@ -49,6 +51,8 @@ library
     , cpu >=0.1 && <1
     , singletons >=2 && <3
     , template-haskell >=2.8 && <3
+    , containers >=0.5 && <1
+    , mtl >=2.2 && <3
   hs-source-dirs: .
   c-sources: cbits/wayland-msg-handling.c
   include-dirs: cbits

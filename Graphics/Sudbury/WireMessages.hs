@@ -22,12 +22,6 @@ import Graphics.Sudbury.Internal
 import Graphics.Sudbury.Argument
 import Graphics.Sudbury.Protocol.Types
 
-data WL23_8
-instance HasResolution WL23_8 where
-  resolution _ = 256 -- 2^8
--- | Fixed-precision number: 23 bits of integer space, 8 bits precision
-type Fixed23_8 = Fixed WL23_8
-
 type family UnboxedWireArgument (t :: ArgumentType) where
   UnboxedWireArgument 'IntWAT = Int32
   UnboxedWireArgument 'UIntWAT = Word32

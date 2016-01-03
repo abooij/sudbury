@@ -14,6 +14,7 @@ case: we need to parse words in host endianness, and parse ints.
 {-# LANGUAGE Safe #-}
 module Graphics.Sudbury.Internal where
 
+import Data.Fixed
 import Data.Word
 import Data.Int
 import Data.Bits
@@ -21,6 +22,12 @@ import qualified Data.ByteString as B
 import qualified Data.Attoparsec.ByteString as A
 import qualified Data.Attoparsec.Binary as AB
 import System.Endian (getSystemEndianness, Endianness(..))
+
+data WL23_8
+instance HasResolution WL23_8 where
+  resolution _ = 256 -- 2^8
+-- | Fixed-precision number: 23 bits of integer space, 8 bits precision
+type Fixed23_8 = Fixed WL23_8
 
 anyWord16he :: A.Parser Word16
 anyWord16he = case getSystemEndianness of
@@ -65,3 +72,5 @@ anyInt32he :: A.Parser Int32
 anyInt32he = case getSystemEndianness of
                 LittleEndian -> anyInt32le
                 BigEndian    -> anyInt32be
+
+data ServerClient = Server | Client

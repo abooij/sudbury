@@ -21,6 +21,7 @@ import Language.Haskell.TH
 import Data.Typeable
 import Data.Word
 import Data.Char
+import Data.Singletons
 
 import Graphics.Sudbury.Protocol.Types
 
@@ -40,6 +41,11 @@ instance ObjectPackClass a where
 -- IOW, find something neater later.
 instance Typeable a => Show (ObjectPack a) where
   show (Pack n) = "<" ++ show (typeRep (Proxy :: Proxy a)) ++ "@" ++ show n ++ ">"
+
+-- | Packages some arbitrary wayland protocol interface (e.g. 'wl_callback' or 'xdg_surface'), which can be reified to a Haskell type using the ObjectPack type
+--
+-- This is like SomeSing except it's even more anonymous: because we do not even know all relevant kinds at compile time
+data ObjectType = forall t. ObjectType (Sing t)
 
 capitalize :: String -> String
 capitalize []       = []
