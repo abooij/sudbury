@@ -36,6 +36,11 @@ library
     , Graphics.Sudbury.Object
     , Graphics.Sudbury.State
     , Graphics.Sudbury.Message
+    , Graphics.Sudbury.Crap.Client
+    , Graphics.Sudbury.Crap.Server
+    , Graphics.Sudbury.Crap.Common
+    , Graphics.Sudbury.Crap.Structs
+    , Graphics.Sudbury.Crap.DispatchFFI
   -- other-modules:
   -- other-extensions:
   build-depends:
@@ -53,6 +58,8 @@ library
     , template-haskell >=2.8 && <3
     , containers >=0.5 && <1
     , mtl >=2.2 && <3
+    , libffi <0.2
+    , stm >=2.4 && <2.6
   hs-source-dirs: .
   c-sources: cbits/wayland-msg-handling.c
   include-dirs: cbits
@@ -62,6 +69,8 @@ library
     , DataKinds
     , TypeFamilies
     , ExistentialQuantification
+    , EmptyDataDecls
+-- TODO remove EmptyDataDecls
   ghc-options: -Wall -fwarn-incomplete-record-updates -fwarn-unused-do-bind
 
 test-suite tests
@@ -81,3 +90,57 @@ test-suite tests
     , bytestring
   ghc-options: -Wall
   default-language: Haskell2010
+
+-- TODO clean up
+executable libwayland-client.so.0
+  main-is: Main.hs
+  other-modules:
+      Graphics.Sudbury.Protocol.XML
+    , Graphics.Sudbury.Protocol.Types
+    , Graphics.Sudbury.Socket
+    , Graphics.Sudbury.Socket.Wayland
+    , Graphics.Sudbury.WirePackages
+    , Graphics.Sudbury.WireMessages
+    , Graphics.Sudbury.Argument
+    , Graphics.Sudbury.Internal
+    , Graphics.Sudbury.Object
+    , Graphics.Sudbury.State
+    , Graphics.Sudbury.Message
+    , Graphics.Sudbury.Crap.Client
+    , Graphics.Sudbury.Crap.Server
+    , Graphics.Sudbury.Crap.Common
+    , Graphics.Sudbury.Crap.Structs
+    , Graphics.Sudbury.Crap.DispatchFFI
+  build-depends:
+      base >=4.8 && <4.9
+    , xml >=1.3 && <1.4
+    , process >= 1.3 && <1.5
+    , unix >=2.5 && <2.8
+    , filepath >=1.2 && <1.5
+    , network >=2.5 && <2.6
+    , bytestring >=0.9 && <1
+    , attoparsec >=0.13 && <1
+    , attoparsec-binary >=0.2 && <1
+    , cpu >=0.1 && <1
+    , singletons >=2 && <3
+    , template-haskell >=2.8 && <3
+    , containers >=0.5 && <1
+    , mtl >=2.2 && <3
+    , libffi <0.2
+    , stm >=2.4 && <2.6
+  default-extensions:
+      GADTs
+    , DataKinds
+    , TypeFamilies
+    , ExistentialQuantification
+    , EmptyDataDecls
+-- TODO remove EmptyDataDecls
+  ghc-options: -shared -dynamic -fPIC
+  extra-libraries:
+      HSrts-ghc7.10.3
+    , HSghc-prim-0.4.0.0-8TmvWUcS1U1IKHT0levwg3-ghc7.10.3
+    , HSbase-4.8.2.0-HQfYBxpPvuw8OunzQu6JGM-ghc7.10.3
+    , HSinteger-gmp-1.0.0.0-2aU3IZNMF9a7mQ0OzsZ0dS-ghc7.10.3
+  default-language: Haskell2010
+
+-- cabal configure --extra-lib-dirs=/usr/lib/ghc-7.10.3/ghcpr_8TmvWUcS1U1IKHT0levwg3/:/usr/lib/ghc-7.10.3/base_HQfYBxpPvuw8OunzQu6JGM/:/usr/lib/ghc-7.10.3/integ_2aU3IZNMF9a7mQ0OzsZ0dS/:/usr/lib/ghc-7.10.3/rts/
