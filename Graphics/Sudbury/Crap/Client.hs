@@ -300,19 +300,24 @@ foreign export ccall "wl_proxy_set_queue" proxy_set_queue
 struct wl_display *
 wl_display_connect(const char *name);
 -}
-blaaaaa cstr = do
-  sock <- connectWithDefault
+peekCStringMaybe :: CString -> IO (Maybe String)
+peekCStringMaybe cstr
+  | cstr == nullPtr = return Nothing
+  | otherwise       = Just <$> peekCString cstr
+
+display_connect cstr = do
+  str <- peekCStringMaybe cstr
+
+  sock <- findServerSocketWithName' str >>= connectToServer
   let fd = Fd $ fdSocket sock
   err <- newTVarIO Nothing
   default_queue <- newTQueueIO >>= newStablePtr
 
-  let
-    dd = DisplayData
-      { displayFd = fd
-      , displayErr = err
-      , displayDefaultQueue = default_queue
-      }
-
+  let dd = DisplayData
+        { displayFd = fd
+        , displayErr = err
+        , displayDefaultQueue = default_queue
+        }
 
   fixIO $ \proxyPtr -> do
     queue <- newTQueueIO >>= newStablePtr >>= newTVarIO
@@ -333,7 +338,7 @@ blaaaaa cstr = do
 
 
 -- TODO
-foreign export ccall "wl_display_connect" blaaaaa
+foreign export ccall "wl_display_connect" display_connect
   :: CString -> IO (StablePtr Proxy)
 
 {-

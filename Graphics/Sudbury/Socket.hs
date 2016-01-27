@@ -10,6 +10,7 @@ Portability : POSIX
 {-# LANGUAGE Trustworthy #-}
 module Graphics.Sudbury.Socket where
 
+import Data.Maybe (fromMaybe)
 import System.Environment (getEnv)
 import System.FilePath ((</>))
 import System.IO.Error (catchIOError)
@@ -29,6 +30,19 @@ findServerSocketWithDefault = do
   dir <- getEnv "XDG_RUNTIME_DIR"
   socketName <- catchIOError (getEnv "WAYLAND_DISPLAY") (\_ -> return "wayland-0")
   return $ dir </> socketName
+
+findServerSocketWithName :: String -> IO FilePath
+findServerSocketWithName name = do
+  dir <- getEnv "XDG_RUNTIME_DIR"
+  return $ dir </> name
+
+-- | This is like 'connect_to_socket' in wayland-client.c
+findServerSocketWithName' :: Maybe String -> IO FilePath
+findServerSocketWithName' mname = do
+  dir <- getEnv "XDG_RUNTIME_DIR"
+  socketName <- catchIOError (getEnv "WAYLAND_DISPLAY") (\_ -> return "wayland-0")
+  let name = fromMaybe socketName mname
+  return $ dir </> name
 
 makeClosingSocket :: IO S.Socket
 makeClosingSocket = do
