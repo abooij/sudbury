@@ -25,7 +25,6 @@ import Foreign.StablePtr
 import Foreign.Storable
 import System.Posix.Types (Fd(..))
 import Network.Socket (fdSocket)
-import System.IO (fixIO)
 
 import Graphics.Sudbury.Socket
 
@@ -39,8 +38,9 @@ type MyEvent = TODO
 type EventQueue = TQueue MyEvent
 
 data Proxy = Proxy
-  { proxyParent :: Either (StablePtr Proxy) (StablePtr DisplayData) -- ^ parent or wl_display data
-  , proxyDisplay :: StablePtr Proxy
+  { proxyParent :: Maybe Proxy
+  , proxyDisplayData :: DisplayData
+  , proxyDisplay :: Proxy
   , proxyQueue :: TVar (StablePtr EventQueue)
   , proxyListener :: TVar (Maybe (Either Listener Dispatcher))  -- ^ listener/implementation or dispatcher (with data)
   , proxyUserData :: TVar UserData
@@ -119,8 +119,9 @@ proxy_create factory interface = do
   pid <- undefined -- TODO
   interfaceVar <- peek interface
   newStablePtr $ Proxy
-    { proxyParent = Left factory
+    { proxyParent = Just factVal
     , proxyDisplay = proxyDisplay factVal
+    , proxyDisplayData = proxyDisplayData factVal
     , proxyQueue = queueVar
     , proxyListener = listenerVar
     , proxyUserData = dataVar
@@ -320,21 +321,20 @@ display_connect cstr = do
         , displayDefaultQueue = default_queue
         }
 
-  fixIO $ \proxyPtr -> do
-    queue <- newTQueueIO >>= newStablePtr >>= newTVarIO
-    listener <- newTVarIO Nothing
-    udata <- newTVarIO nullPtr
-    ddptr <- newStablePtr dd
-    let proxy = Proxy
-          { proxyParent = Right ddptr
-          , proxyDisplay = proxyPtr
-          , proxyQueue = queue
-          , proxyListener = listener
-          , proxyUserData = udata
-          , proxyId = 0
-          , proxyInterface = undefined -- TODO populate
-          }
-    newStablePtr proxy
+  queue <- newTQueueIO >>= newStablePtr >>= newTVarIO
+  listener <- newTVarIO Nothing
+  udata <- newTVarIO nullPtr
+  let proxy = Proxy
+        { proxyParent = Nothing
+        , proxyDisplayData = dd
+        , proxyDisplay = proxy
+        , proxyQueue = queue
+        , proxyListener = listener
+        , proxyUserData = udata
+        , proxyId = 0
+        , proxyInterface = undefined -- TODO populate
+        }
+  newStablePtr proxy
 
 
 
@@ -364,11 +364,7 @@ wl_display_get_fd(struct wl_display *display);
 display_get_fd :: StablePtr Proxy -> IO Fd
 display_get_fd proxy = do
   proxyVal <- deRefStablePtr proxy
-  case (proxyParent proxyVal) of
-    Left _  -> return (-1) -- proxy was not a wl_display
-    Right dd -> do
-      ddVal <- deRefStablePtr dd
-      return (displayFd ddVal)
+  return $ displayFd $ proxyDisplayData proxyVal
 
 foreign export ccall "wl_display_get_fd" display_get_fd
   :: StablePtr Proxy -> IO Fd
@@ -381,12 +377,8 @@ wl_display_dispatch(struct wl_display *display);
 display_dispatch :: StablePtr Proxy -> IO CInt
 display_dispatch proxy = do
   proxyVal <- deRefStablePtr proxy
-  case (proxyParent proxyVal) of
-    Left _   -> return (-1) -- proxy was not a wl_display
-    Right dd -> do
-      ddVal <- deRefStablePtr dd
-      default_queue <- deRefStablePtr (displayDefaultQueue ddVal)
-      display_dispatch_queue' proxyVal default_queue
+  default_queue <- deRefStablePtr $ displayDefaultQueue $ proxyDisplayData proxyVal
+  display_dispatch_queue' proxyVal default_queue
 
 foreign export ccall "wl_display_dispatch" display_dispatch
   :: StablePtr Proxy -> IO CInt
@@ -417,12 +409,8 @@ wl_display_dispatch_pending(struct wl_display *display);
 display_dispatch_pending :: StablePtr Proxy -> IO CInt
 display_dispatch_pending proxy = do
   proxyVal <- deRefStablePtr proxy
-  case (proxyParent proxyVal) of
-    Left _   -> return (-1) -- proxy was not a wl_display
-    Right dd -> do
-      ddVal <- deRefStablePtr dd
-      default_queue <- deRefStablePtr (displayDefaultQueue ddVal)
-      display_dispatch_queue_pending' proxyVal default_queue
+  default_queue <- deRefStablePtr $ displayDefaultQueue $ proxyDisplayData proxyVal
+  display_dispatch_queue_pending' proxyVal default_queue
 
 foreign export ccall "wl_display_dispatch_pending" display_dispatch_pending
   :: StablePtr Proxy -> IO CInt
@@ -435,15 +423,11 @@ wl_display_get_error(struct wl_display *display);
 display_get_error :: StablePtr Proxy -> IO CInt
 display_get_error proxy = do
   proxyVal <- deRefStablePtr proxy
-  case (proxyParent proxyVal) of
-    Left _ -> return 0 -- proxy was not a wl_display
-    Right dd -> do
-      ddVal <- deRefStablePtr dd
-      atomically $ do
-        err <- readTVar (displayErr ddVal)
-        case err of
-          Nothing -> return 0
-          Just ( last_error , _ ) -> return $ fromIntegral last_error
+  atomically $ do
+    err <- readTVar $ displayErr $ proxyDisplayData proxyVal
+    case err of
+      Nothing -> return 0
+      Just ( last_error , _ ) -> return $ fromIntegral last_error
 
 {-
 uint32_t
@@ -461,19 +445,15 @@ pokeNull ptr val
 display_get_protocol_error :: StablePtr Proxy -> Ptr (Ptr WL_interface) -> Ptr CUInt -> IO CUInt
 display_get_protocol_error proxy ptrIface ptrId  = do
   proxyVal <- deRefStablePtr proxy
-  case proxyParent proxyVal of
-    Left _ -> return 0 -- proxy was not a wl_display
-    Right dd -> do
-      ddVal <- deRefStablePtr dd
-      err <- readTVarIO (displayErr ddVal)
-      case err of
-        -- Should the first (ignored) number here be EPROTO?
-        Just ( _ , Just (code , interface , objid)) -> do
-          -- Handle C's awkward way of returning values
-          pokeNull ptrIface interface
-          pokeNull ptrId (fromIntegral objid)
-          return $ fromIntegral code
-        _ -> return 0
+  err <- readTVarIO $ displayErr $ proxyDisplayData proxyVal
+  case err of
+    -- Should the first (ignored) number here be EPROTO?
+    Just ( _ , Just (code , interface , objid)) -> do
+      -- Handle C's awkward way of returning values
+      pokeNull ptrIface interface
+      pokeNull ptrId (fromIntegral objid)
+      return $ fromIntegral code
+    _ -> return 0
 
 foreign export ccall "wl_display_get_protocol_error" display_get_protocol_error
   :: StablePtr Proxy -> Ptr (Ptr WL_interface) -> Ptr CUInt -> IO CUInt
@@ -500,13 +480,9 @@ wl_display_roundtrip(struct wl_display *display);
 display_roundtrip :: StablePtr Proxy -> IO CInt
 display_roundtrip proxy = do
   proxyVal <- deRefStablePtr proxy
-  case proxyParent proxyVal of
-    Left _ -> return (-1) -- proxy was not a wl_display
-    Right dd -> do
-      ddVal <- deRefStablePtr dd
-      queue <- deRefStablePtr (displayDefaultQueue ddVal)
-      -- TODO optimize the following: shouldn't need to deRef the StablePtrs again
-      display_roundtrip_queue' proxyVal queue
+  queue <- deRefStablePtr $ displayDefaultQueue $ proxyDisplayData proxyVal
+  -- TODO optimize the following: shouldn't need to deRef the StablePtrs again
+  display_roundtrip_queue' proxyVal queue
 
 foreign export ccall "wl_display_roundtrip" display_roundtrip
   :: StablePtr Proxy -> IO CInt
