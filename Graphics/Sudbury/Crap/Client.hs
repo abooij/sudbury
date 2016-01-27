@@ -124,11 +124,6 @@ proxy_create factory interface = do
     , proxyInterface = interfaceVar
     }
 
-blaaa :: StablePtr WL_interface
-blaaa = undefined
-
-foreign export ccall "wl_seat_interface" blaaa :: StablePtr WL_interface
-
 {-
 -- cbits to _array_constructor
 struct wl_proxy *

@@ -61,7 +61,7 @@ library
     , libffi <0.2
     , stm >=2.4 && <2.6
   hs-source-dirs: .
-  c-sources: cbits/wayland-msg-handling.c
+  c-sources: cbits/wayland-msg-handling.c cbits/wayland-protocol.c
   include-dirs: cbits
   default-language:    Haskell2010
   default-extensions:
@@ -135,6 +135,9 @@ executable libwayland-client.so.0
     , ExistentialQuantification
     , EmptyDataDecls
 -- TODO remove EmptyDataDecls
+  c-sources: cbits/wayland-msg-handling.c cbits/wayland-protocol.c
+  cc-options: -fPIC -shared
+  include-dirs: cbits/
   ghc-options: -shared -dynamic -fPIC
   extra-libraries:
       HSrts-ghc7.10.3
