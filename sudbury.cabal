@@ -69,8 +69,6 @@ library
     , DataKinds
     , TypeFamilies
     , ExistentialQuantification
-    , EmptyDataDecls
--- TODO remove EmptyDataDecls
   ghc-options: -Wall -fwarn-incomplete-record-updates -fwarn-unused-do-bind
 
 test-suite tests
@@ -117,8 +115,6 @@ executable libwayland-client.so.0
     , DataKinds
     , TypeFamilies
     , ExistentialQuantification
-    , EmptyDataDecls
--- TODO remove EmptyDataDecls
   c-sources: cbits/wayland-msg-handling.c cbits/wayland-protocol.c cbits/init.c
   cc-options: -fPIC -shared
   include-dirs: cbits/

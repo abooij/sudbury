@@ -116,7 +116,7 @@ proxy_create factory interface = do
     newTVar factQueue
   listenerVar <- newTVarIO Nothing
   dataVar <- newTVarIO nullPtr
-  proxyId <- undefined -- TODO
+  pid <- undefined -- TODO
   interfaceVar <- peek interface
   newStablePtr $ Proxy
     { proxyParent = Left factory
@@ -124,7 +124,7 @@ proxy_create factory interface = do
     , proxyQueue = queueVar
     , proxyListener = listenerVar
     , proxyUserData = dataVar
-    , proxyId = proxyId
+    , proxyId = pid
     , proxyInterface = interfaceVar
     }
 
@@ -305,6 +305,7 @@ peekCStringMaybe cstr
   | cstr == nullPtr = return Nothing
   | otherwise       = Just <$> peekCString cstr
 
+display_connect :: CString -> IO (StablePtr Proxy)
 display_connect cstr = do
   str <- peekCStringMaybe cstr
 
@@ -467,10 +468,10 @@ display_get_protocol_error proxy ptrIface ptrId  = do
       err <- readTVarIO (displayErr ddVal)
       case err of
         -- Should the first (ignored) number here be EPROTO?
-        Just ( _ , Just (code , interface , id)) -> do
+        Just ( _ , Just (code , interface , objid)) -> do
           -- Handle C's awkward way of returning values
           pokeNull ptrIface interface
-          pokeNull ptrId (fromIntegral id)
+          pokeNull ptrId (fromIntegral objid)
           return $ fromIntegral code
         _ -> return 0
 
