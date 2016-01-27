@@ -24,6 +24,10 @@ import Foreign.Ptr
 import Foreign.StablePtr
 import Foreign.Storable
 import System.Posix.Types (Fd(..))
+import Network.Socket (fdSocket)
+import System.IO (fixIO)
+
+import Graphics.Sudbury.Socket
 
 import Graphics.Sudbury.Crap.Common
 import Graphics.Sudbury.Crap.Structs
@@ -296,8 +300,41 @@ foreign export ccall "wl_proxy_set_queue" proxy_set_queue
 struct wl_display *
 wl_display_connect(const char *name);
 -}
+blaaaaa cstr = do
+  sock <- connectWithDefault
+  let fd = Fd $ fdSocket sock
+  err <- newTVarIO Nothing
+  default_queue <- newTQueueIO >>= newStablePtr
+
+  let
+    dd = DisplayData
+      { displayFd = fd
+      , displayErr = err
+      , displayDefaultQueue = default_queue
+      }
+
+
+  fixIO $ \proxyPtr -> do
+    queue <- newTQueueIO >>= newStablePtr >>= newTVarIO
+    listener <- newTVarIO Nothing
+    udata <- newTVarIO nullPtr
+    ddptr <- newStablePtr dd
+    let proxy = Proxy
+          { proxyParent = Right ddptr
+          , proxyDisplay = proxyPtr
+          , proxyQueue = queue
+          , proxyListener = listener
+          , proxyUserData = udata
+          , proxyId = 0
+          , proxyInterface = undefined -- TODO populate
+          }
+    newStablePtr proxy
+
+
 
 -- TODO
+foreign export ccall "wl_display_connect" blaaaaa
+  :: CString -> IO (StablePtr Proxy)
 
 {-
 struct wl_display *

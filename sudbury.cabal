@@ -119,7 +119,7 @@ executable libwayland-client.so.0
     , ExistentialQuantification
     , EmptyDataDecls
 -- TODO remove EmptyDataDecls
-  c-sources: cbits/wayland-msg-handling.c cbits/wayland-protocol.c
+  c-sources: cbits/wayland-msg-handling.c cbits/wayland-protocol.c cbits/init.c
   cc-options: -fPIC -shared
   include-dirs: cbits/
   ghc-options: -shared -dynamic -fPIC
