@@ -56,7 +56,7 @@ state-related operations:
 < wirepackage
 -}
 
--- | (The state segment of) this is known as 'wl_client' (compositor-side) or 'wl_display' (client-side) in libwayland.
+-- | This represents (the state segment of) 'wl_client' (compositor-side) or 'wl_display' (client-side) in libwayland.
 data ConnectionState = ConnectionState
   { connectionObjects :: M.Map Word32 MyObjectType
   , connectionLastObjectId :: Word32
