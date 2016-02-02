@@ -11,6 +11,8 @@ This implements common crap.
 -}
 module Graphics.Sudbury.Crap.Common where
 
+import Data.Word
+import Control.Concurrent.STM
 import Foreign.Ptr
 import Foreign.StablePtr
 import Foreign.C.Types
@@ -58,3 +60,18 @@ charToArgType c =
        'a' -> ArgTypeBox SArrayWAT
        'h' -> ArgTypeBox SFdWAT
        o   -> error ("Unexpected argument '" ++ [o] ++ "' encountered")
+
+generateId :: TVar Word32 -> TVar [Word32] -> STM Word32
+generateId lastId avail = do
+  free <- readTVar avail
+  case free of
+    (x:xs) -> do
+      writeTVar avail xs
+      return x
+    [] -> do
+      n <- readTVar lastId
+      writeTVar lastId (n+1)
+      return (n+1)
+
+returnId :: Word32 -> TVar [Word32] -> STM ()
+returnId id avail = modifyTVar avail (id:)

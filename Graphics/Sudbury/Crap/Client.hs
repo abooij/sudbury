@@ -63,6 +63,8 @@ data DisplayData = DisplayData
   , displayDefaultQueue :: StablePtr EventQueue -- display_queue should be the proxy's queue
   , displayOutQueue :: MessageQueue -- messages to write to the fd
   , displayFdQueue :: FdQueue -- fd's to be copied to the Other Side (tm)
+  , displayLastId :: TVar Word32
+  , displayFreeIds :: TVar [Word32]
   -- mutex?
   -- reader_cond?
   -- read_serial?
@@ -171,7 +173,8 @@ proxy_create factory interface = do
     newTVar factQueue
   listenerVar <- newTVarIO Nothing
   dataVar <- newTVarIO nullPtr
-  -- pid <- undefined -- TODO
+  let dd = proxyDisplayData factVal
+  pid <- atomically $ generateId (displayLastId dd) (displayFreeIds dd)
 
   newStablePtr $ Proxy
     { proxyParent = Just factVal
@@ -180,7 +183,7 @@ proxy_create factory interface = do
     , proxyQueue = queueVar
     , proxyListener = listenerVar
     , proxyUserData = dataVar
-    , proxyId = error "id undefined" -- TODO
+    , proxyId = pid
     , proxyInterface = interface
     }
 
@@ -416,6 +419,8 @@ display_connect cstr = do
   default_queue <- newTQueueIO >>= newStablePtr
   out_queue <- newTQueueIO
   fd_queue <- newTQueueIO
+  last_id <- newTVarIO 0
+  id_stack <- newTVarIO []
 
   let dd = DisplayData
         { displayFd = fd
@@ -423,6 +428,8 @@ display_connect cstr = do
         , displayDefaultQueue = default_queue
         , displayOutQueue = out_queue
         , displayFdQueue = fd_queue
+        , displayLastId = last_id
+        , displayFreeIds = id_stack
         }
 
   queue <- newTQueueIO >>= newStablePtr >>= newTVarIO
@@ -436,13 +443,10 @@ display_connect cstr = do
         , proxyListener = listener
         , proxyUserData = udata
         , proxyId = 0
-        , proxyInterface = display_interface -- TODO populate
+        , proxyInterface = display_interface
         }
   newStablePtr proxy
 
-
-
--- TODO
 foreign export ccall "wl_display_connect" display_connect
   :: CString -> IO (StablePtr Proxy)
 
