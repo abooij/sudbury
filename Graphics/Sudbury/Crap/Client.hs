@@ -15,18 +15,22 @@ The code in this module could benefit from some optics...
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Graphics.Sudbury.Crap.Client where
 
+import qualified Data.ByteString as BS
 import Data.Word
 import Data.Int
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, catMaybes)
 import Control.Concurrent.STM
 import Foreign.C
 import Foreign.Ptr
 import Foreign.StablePtr
 import Foreign.Storable
+import Foreign.Marshal.Array (peekArray0)
 import System.Posix.Types (Fd(..))
 import Network.Socket (fdSocket)
 
+import Graphics.Sudbury.Argument
 import Graphics.Sudbury.Socket
+import Graphics.Sudbury.WireMessages
 
 import Graphics.Sudbury.Crap.Common
 import Graphics.Sudbury.Crap.Structs
@@ -36,6 +40,8 @@ data TODO
 type MyEvent = TODO
 
 type EventQueue = TQueue MyEvent
+type MessageQueue = TQueue WireMessage
+type FdQueue = TQueue Fd
 
 data Proxy = Proxy
   { proxyParent :: Maybe Proxy
@@ -45,7 +51,7 @@ data Proxy = Proxy
   , proxyListener :: TVar (Maybe (Either Listener Dispatcher))  -- ^ listener/implementation or dispatcher (with data)
   , proxyUserData :: TVar UserData
   , proxyId :: Word32
-  , proxyInterface :: WL_interface
+  , proxyInterface :: Ptr WL_interface
   -- flags: destroyed, id_deleted?
   --
   }
@@ -55,11 +61,60 @@ data DisplayData = DisplayData
   , displayErr :: TVar (Maybe (Int32, Maybe (Word32 , Ptr WL_interface , Word32)))
     -- ^ last_error, code, interface, id
   , displayDefaultQueue :: StablePtr EventQueue -- display_queue should be the proxy's queue
+  , displayOutQueue :: MessageQueue -- messages to write to the fd
+  , displayFdQueue :: FdQueue -- fd's to be copied to the Other Side (tm)
   -- mutex?
   -- reader_cond?
   -- read_serial?
   -- reader_count?
   }
+
+type family CArgument (t :: ArgumentType) where
+  CArgument 'IntWAT = CInt
+  CArgument 'UIntWAT = CUInt
+  CArgument 'FixedWAT = CInt
+  CArgument 'StringWAT = CString
+  CArgument 'ObjectWAT = StablePtr Proxy
+  CArgument 'NewIdWAT = CUInt
+  CArgument 'ArrayWAT = Ptr WL_array
+  CArgument 'FdWAT = Fd
+
+data CArgBox = forall t. CArgBox (SArgumentType t) (CArgument t)
+
+-- we basically only need to pattern match on the first argument here because the Storable instances don't propagate along type families
+readCArg :: Ptr WL_arg -> SArgumentType t -> IO (CArgument t)
+readCArg p SIntWAT    = peek (castPtr p)
+readCArg p SUIntWAT   = peek (castPtr p)
+readCArg p SFixedWAT  = peek (castPtr p)
+readCArg p SStringWAT = peek (castPtr p)
+readCArg p SObjectWAT = peek (castPtr p)
+readCArg p SNewIdWAT  = peek (castPtr p)
+readCArg p SArrayWAT  = peek (castPtr p)
+readCArg p SFdWAT     = peek (castPtr p)
+
+cArgToWireArg :: SArgumentType t -> CArgument t -> IO (WireArgument t , Maybe Fd)
+cArgToWireArg SIntWAT n = return (fromIntegral n , Nothing)
+cArgToWireArg SUIntWAT n = return (fromIntegral n , Nothing)
+cArgToWireArg SFixedWAT n = return (fromIntegral n , Nothing)
+cArgToWireArg SStringWAT cstr = do
+  bs <- BS.packCString cstr
+  return (bs , Nothing)
+cArgToWireArg SObjectWAT proxy = do
+  proxyVal <- deRefStablePtr proxy
+  return (proxyId proxyVal , Nothing)
+cArgToWireArg SNewIdWAT n = return (fromIntegral n , Nothing)
+cArgToWireArg SArrayWAT ar = do
+  array <- peek ar
+  bs <- BS.packCStringLen (arrayData array , fromIntegral $ arraySize array)
+  return (bs , Nothing)
+cArgToWireArg SFdWAT fd = do
+  error "fd undefined" -- TODO
+  -- here we should duplicate the Fd and return it in the second argument
+
+getWireArg :: Ptr WL_arg -> SArgumentType t -> IO (WireArgument t , Maybe Fd)
+getWireArg ptr x = do
+  cArg <- readCArg ptr x
+  cArgToWireArg x cArg
 
 {-
 
@@ -116,8 +171,8 @@ proxy_create factory interface = do
     newTVar factQueue
   listenerVar <- newTVarIO Nothing
   dataVar <- newTVarIO nullPtr
-  pid <- undefined -- TODO
-  interfaceVar <- peek interface
+  -- pid <- undefined -- TODO
+
   newStablePtr $ Proxy
     { proxyParent = Just factVal
     , proxyDisplay = proxyDisplay factVal
@@ -125,8 +180,8 @@ proxy_create factory interface = do
     , proxyQueue = queueVar
     , proxyListener = listenerVar
     , proxyUserData = dataVar
-    , proxyId = pid
-    , proxyInterface = interfaceVar
+    , proxyId = error "id undefined" -- TODO
+    , proxyInterface = interface
     }
 
 {-
@@ -147,6 +202,48 @@ wl_proxy_marshal_array_constructor(struct wl_proxy *proxy,
 				   const struct wl_interface *interface);
 -}
 
+proxy_msg_get_signature :: StablePtr Proxy -> CUInt -> IO (Ptr CChar)
+proxy_msg_get_signature proxy opcode = do
+  proxyVal <- deRefStablePtr proxy
+  iface <- peek (proxyInterface proxyVal)
+  msg <- peekElemOff (ifaceMethods iface) (fromIntegral opcode)
+  return (msgSignature msg)
+
+foreign export ccall "proxy_msg_get_signature" proxy_msg_get_signature
+  :: StablePtr Proxy -> CUInt -> IO (Ptr CChar)
+
+proxy_marshal_array_constructor :: StablePtr Proxy -> CUInt -> Ptr WL_arg -> Ptr WL_interface -> IO (StablePtr Proxy)
+proxy_marshal_array_constructor factory opcode args interface = do
+  factVal <- deRefStablePtr factory
+  proxy <- proxy_create factory interface -- TODO execute in STM rather than IO
+  iface <- peek (proxyInterface factVal)
+  msg <- peekElemOff (ifaceMethods iface) (fromIntegral opcode)
+  argTypes <- map charToArgType <$> peekArray0 0 (msgSignature msg)
+  -- TODO the following two expressions should be made prettier
+  let ptrs = iterate (flip plusPtr wl_arg_size) args
+  haskArgs <- sequence $ zipWith (
+    \(ArgTypeBox x) ptr -> do
+      (a , b) <- getWireArg ptr x
+      return (WireArgBox x a , b)
+    ) argTypes ptrs
+  let wireMsg = WireMessage
+       { wireMessageSender = (proxyId factVal)
+       , wireMessageMessage = fromIntegral opcode
+       , wireMessageArguments = fst $ unzip haskArgs
+       }
+  let fds = catMaybes $ snd $ unzip haskArgs
+  let dd = proxyDisplayData factVal
+      out_queue = displayOutQueue dd
+      fd_queue  = displayFdQueue dd
+  atomically $ do
+    writeTQueue out_queue wireMsg
+    mapM_ (writeTQueue fd_queue) fds
+  -- TODO actually send data (as in libwayland)
+  return proxy
+
+foreign export ccall "wl_proxy_marshal_array_constructor" proxy_marshal_array_constructor
+  :: StablePtr Proxy -> CUInt -> Ptr WL_arg -> Ptr WL_interface -> IO (StablePtr Proxy)
+
 {-
 void
 wl_proxy_destroy(struct wl_proxy *proxy);
@@ -158,6 +255,7 @@ proxy_destroy :: StablePtr Proxy -> IO ()
 proxy_destroy proxy = do
   -- TODO update object map (ie free proxy id)
   freeStablePtr proxy
+
 foreign export ccall "wl_proxy_destroy" proxy_destroy
   :: StablePtr Proxy -> IO ()
 
@@ -306,6 +404,8 @@ peekCStringMaybe cstr
   | cstr == nullPtr = return Nothing
   | otherwise       = Just <$> peekCString cstr
 
+foreign import ccall unsafe "wayland-client.h &wl_display_interface" display_interface :: Ptr WL_interface
+
 display_connect :: CString -> IO (StablePtr Proxy)
 display_connect cstr = do
   str <- peekCStringMaybe cstr
@@ -314,11 +414,15 @@ display_connect cstr = do
   let fd = Fd $ fdSocket sock
   err <- newTVarIO Nothing
   default_queue <- newTQueueIO >>= newStablePtr
+  out_queue <- newTQueueIO
+  fd_queue <- newTQueueIO
 
   let dd = DisplayData
         { displayFd = fd
         , displayErr = err
         , displayDefaultQueue = default_queue
+        , displayOutQueue = out_queue
+        , displayFdQueue = fd_queue
         }
 
   queue <- newTQueueIO >>= newStablePtr >>= newTVarIO
@@ -332,7 +436,7 @@ display_connect cstr = do
         , proxyListener = listener
         , proxyUserData = udata
         , proxyId = 0
-        , proxyInterface = undefined -- TODO populate
+        , proxyInterface = display_interface -- TODO populate
         }
   newStablePtr proxy
 
@@ -390,7 +494,7 @@ wl_display_dispatch_queue(struct wl_display *display,
 -}
 
 display_dispatch_queue' :: Proxy -> EventQueue -> IO CInt
-display_dispatch_queue' = undefined -- TODO implement
+display_dispatch_queue' _ _ = error "dispatch undefined" -- TODO implement
 
 {-
 int
@@ -399,7 +503,7 @@ wl_display_dispatch_queue_pending(struct wl_display *display,
 -}
 
 display_dispatch_queue_pending' :: Proxy -> EventQueue -> IO CInt
-display_dispatch_queue_pending' = undefined -- TODO implement
+display_dispatch_queue_pending' _ _ = error "dispatch pending undefined" -- TODO implement
 
 {-
 int
@@ -470,7 +574,7 @@ wl_display_roundtrip_queue(struct wl_display *display,
 -}
 
 display_roundtrip_queue' :: Proxy -> EventQueue -> IO CInt
-display_roundtrip_queue' = undefined -- TODO implement
+display_roundtrip_queue' = error "roundtrip undefined" -- TODO implement
 
 {-
 int

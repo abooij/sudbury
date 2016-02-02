@@ -115,7 +115,7 @@ executable libwayland-client.so.0
     , DataKinds
     , TypeFamilies
     , ExistentialQuantification
-  c-sources: cbits/wayland-msg-handling.c cbits/wayland-protocol.c cbits/init.c
+  c-sources: cbits/wayland-msg-handling.c cbits/wayland-protocol.c cbits/init.c cbits/wayland-client.c
   cc-options: -fPIC -shared
   include-dirs: cbits/
   ghc-options: -shared -dynamic -fPIC

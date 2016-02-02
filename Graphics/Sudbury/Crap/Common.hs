@@ -14,6 +14,9 @@ module Graphics.Sudbury.Crap.Common where
 import Foreign.Ptr
 import Foreign.StablePtr
 import Foreign.C.Types
+import Foreign.C.String
+
+import Graphics.Sudbury.Argument
 
 import Graphics.Sudbury.Crap.Structs
 
@@ -43,3 +46,15 @@ typedef int (*wl_dispatcher_func_t)(const void *, void *, uint32_t,
 type DispatcherFunc = FunPtr (DispatcherData -> StablePtr () -> CUInt -> Ptr WL_message -> Ptr WL_arg -> IO CInt)
 
 type Dispatcher = (DispatcherFunc, DispatcherData)
+
+charToArgType :: CChar -> ArgTypeBox
+charToArgType c =
+  case castCCharToChar c of
+       'i' -> ArgTypeBox SIntWAT
+       'u' -> ArgTypeBox SUIntWAT
+       'f' -> ArgTypeBox SFixedWAT
+       'o' -> ArgTypeBox SObjectWAT
+       'n' -> ArgTypeBox SNewIdWAT
+       'a' -> ArgTypeBox SArrayWAT
+       'h' -> ArgTypeBox SFdWAT
+       o   -> error ("Unexpected argument '" ++ [o] ++ "' encountered")

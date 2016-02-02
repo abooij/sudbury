@@ -22,21 +22,21 @@ import Graphics.Sudbury.Internal
 import Graphics.Sudbury.Argument
 import Graphics.Sudbury.Protocol.Types
 
-type family UnboxedWireArgument (t :: ArgumentType) where
-  UnboxedWireArgument 'IntWAT = Int32
-  UnboxedWireArgument 'UIntWAT = Word32
-  UnboxedWireArgument 'FixedWAT = Fixed23_8
-  UnboxedWireArgument 'StringWAT = B.ByteString
-  UnboxedWireArgument 'ObjectWAT = Word32
-  UnboxedWireArgument 'NewIdWAT = Word32
-  UnboxedWireArgument 'ArrayWAT = B.ByteString
-  UnboxedWireArgument 'FdWAT = ()
+type family WireArgument (t :: ArgumentType) where
+  WireArgument 'IntWAT = Int32
+  WireArgument 'UIntWAT = Word32
+  WireArgument 'FixedWAT = Fixed23_8
+  WireArgument 'StringWAT = B.ByteString
+  WireArgument 'ObjectWAT = Word32
+  WireArgument 'NewIdWAT = Word32
+  WireArgument 'ArrayWAT = B.ByteString
+  WireArgument 'FdWAT = ()
 
-data WireArgBox = forall t. WireArgBox (SArgumentType t) (UnboxedWireArgument t)
+data WireArgBox = forall t. WireArgBox (SArgumentType t) (WireArgument t)
 
 data WireMessage = WireMessage
   { wireMessageSender :: Word32
-  , wireMessageMessage :: WLMessage
+  , wireMessageMessage :: Word32
   , wireMessageArguments :: [WireArgBox]
   }
 
@@ -51,7 +51,7 @@ parseWireByteString = do
   return bs
 
 -- | Decode an individual argument
-parseWireArgument :: SArgumentType t -> A.Parser (UnboxedWireArgument t)
+parseWireArgument :: SArgumentType t -> A.Parser (WireArgument t)
 parseWireArgument SIntWAT = anyInt32he
 parseWireArgument SUIntWAT = anyWord32he
 parseWireArgument SFixedWAT = MkFixed . fromIntegral <$> anyInt32he
@@ -65,12 +65,12 @@ boxedParse :: ArgTypeBox -> A.Parser WireArgBox
 boxedParse (ArgTypeBox tp) =
   WireArgBox tp <$> parseWireArgument tp
 
-decode :: Word32 -> WLMessage -> A.Parser WireMessage
-decode sender msg = do
+decode :: Word32 -> Word32 -> WLMessage -> A.Parser WireMessage
+decode sender opcode msg = do
   args <- mapM (boxedParse . argDataProj . argumentType) (messageArguments msg)
   return WireMessage
     { wireMessageSender = sender
-    , wireMessageMessage = msg
+    , wireMessageMessage = opcode
     , wireMessageArguments = args
     }
 
@@ -96,7 +96,7 @@ buildWireByteString bs =
     padding = size - len
 
 -- | Encode an individual argument
-encodeArgument :: SArgumentType t -> UnboxedWireArgument t -> BB.Builder
+encodeArgument :: SArgumentType t -> WireArgument t -> BB.Builder
 encodeArgument SIntWAT i = BBE.int32Host i
 encodeArgument SUIntWAT i = BBE.word32Host i
 encodeArgument SFixedWAT (MkFixed n) = BBE.int32Host $ fromIntegral n
