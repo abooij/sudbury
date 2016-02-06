@@ -71,18 +71,6 @@ data DisplayData = DisplayData
   -- reader_count?
   }
 
-type family CArgument (t :: ArgumentType) where
-  CArgument 'IntWAT = CInt
-  CArgument 'UIntWAT = CUInt
-  CArgument 'FixedWAT = CInt
-  CArgument 'StringWAT = CString
-  CArgument 'ObjectWAT = StablePtr Proxy
-  CArgument 'NewIdWAT = CUInt
-  CArgument 'ArrayWAT = Ptr WL_array
-  CArgument 'FdWAT = Fd
-
-data CArgBox = forall t. CArgBox (SArgumentType t) (CArgument t)
-
 -- we basically only need to pattern match on the first argument here because the Storable instances don't propagate along type families
 readCArg :: Ptr WL_arg -> SArgumentType t -> IO (CArgument t)
 readCArg p SIntWAT    = peek (castPtr p)
@@ -94,6 +82,7 @@ readCArg p SNewIdWAT  = peek (castPtr p)
 readCArg p SArrayWAT  = peek (castPtr p)
 readCArg p SFdWAT     = peek (castPtr p)
 
+foreign import ccall unsafe "wl_os_dupfd_cloexec" os_dupfd_cloexec :: Fd -> CLong -> IO Fd
 cArgToWireArg :: SArgumentType t -> CArgument t -> IO (WireArgument t , Maybe Fd)
 cArgToWireArg SIntWAT n = return (fromIntegral n , Nothing)
 cArgToWireArg SUIntWAT n = return (fromIntegral n , Nothing)
@@ -102,7 +91,7 @@ cArgToWireArg SStringWAT cstr = do
   bs <- BS.packCString cstr
   return (bs , Nothing)
 cArgToWireArg SObjectWAT proxy = do
-  proxyVal <- deRefStablePtr proxy
+  proxyVal <- deRefStablePtr $ castPtrToStablePtr proxy
   return (proxyId proxyVal , Nothing)
 cArgToWireArg SNewIdWAT n = return (fromIntegral n , Nothing)
 cArgToWireArg SArrayWAT ar = do
@@ -110,7 +99,8 @@ cArgToWireArg SArrayWAT ar = do
   bs <- BS.packCStringLen (arrayData array , fromIntegral $ arraySize array)
   return (bs , Nothing)
 cArgToWireArg SFdWAT fd = do
-  error "fd undefined" -- TODO
+  newfd <- os_dupfd_cloexec fd 0
+  return (() , Just newfd)
   -- here we should duplicate the Fd and return it in the second argument
 
 getWireArg :: Ptr WL_arg -> SArgumentType t -> IO (WireArgument t , Maybe Fd)

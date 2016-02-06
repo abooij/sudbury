@@ -17,6 +17,7 @@ import Foreign.Ptr
 import Foreign.StablePtr
 import Foreign.C.Types
 import Foreign.C.String
+import System.Posix.Types
 
 import Graphics.Sudbury.Argument
 
@@ -74,4 +75,16 @@ generateId lastId avail = do
       return (n+1)
 
 returnId :: Word32 -> TVar [Word32] -> STM ()
-returnId id avail = modifyTVar avail (id:)
+returnId pid avail = modifyTVar avail (pid:)
+
+type family CArgument (t :: ArgumentType) where
+  CArgument 'IntWAT = CInt
+  CArgument 'UIntWAT = CUInt
+  CArgument 'FixedWAT = CInt
+  CArgument 'StringWAT = CString
+  CArgument 'ObjectWAT = Ptr ()
+  CArgument 'NewIdWAT = CUInt
+  CArgument 'ArrayWAT = Ptr WL_array
+  CArgument 'FdWAT = Fd
+
+data CArgBox = forall t. CArgBox (SArgumentType t) (CArgument t)

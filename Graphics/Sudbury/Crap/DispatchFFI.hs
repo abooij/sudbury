@@ -10,4 +10,23 @@ Use libffi to call C functions for callbacks
 -}
 module Graphics.Sudbury.Crap.DispatchFFI where
 
+import Foreign.Ptr
 import Foreign.LibFFI
+import System.Posix.Types
+
+import Graphics.Sudbury.Argument
+import Graphics.Sudbury.Crap.Common
+
+packageCArg :: SArgumentType t -> CArgument t -> Arg
+packageCArg SIntWAT    = argCInt
+packageCArg SUIntWAT   = argCUInt
+packageCArg SFixedWAT  = argCInt
+packageCArg SStringWAT = argPtr
+packageCArg SObjectWAT = argPtr
+packageCArg SNewIdWAT  = argCUInt
+packageCArg SArrayWAT  = argPtr
+packageCArg SFdWAT     = argCInt . (\(Fd x) -> x)
+
+invokeFFI :: Implementation -> UserData -> Ptr () -> [CArgBox] -> IO ()
+invokeFFI fun udata objptr args =
+  callFFI fun retVoid (argPtr udata : argPtr objptr : map (\(CArgBox x a) -> packageCArg x a) args)
