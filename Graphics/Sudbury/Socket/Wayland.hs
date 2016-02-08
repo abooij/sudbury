@@ -1,5 +1,6 @@
 {-
 Copyright © 2014 Intel Corporation
+Copyright © 2016 Auke Booij
 
 Permission to use, copy, modify, distribute, and sell this software and its
 documentation for any purpose is hereby granted without fee, provided that
@@ -19,7 +20,7 @@ DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
 OF THIS SOFTWARE.
 -}
-{-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE Safe #-}
 {-# LANGUAGE CPP                      #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 
@@ -32,7 +33,6 @@ import qualified Data.ByteString    as BS
 import           Foreign
 import           Foreign.C.Types
 import           System.Posix.Types (Fd(..))
-import qualified Network.Socket     as Socket
 
 foreign import ccall unsafe "wayland-msg-handling.h sendmsg_wayland"
     c_sendmsg_wayland  :: CInt -- fd
@@ -52,28 +52,27 @@ foreign import ccall unsafe "wayland-msg-handling.h recvmsg_wayland"
         -> IO CInt -- bytes received
 
 
-sendToWayland :: Socket.Socket -> BS.ByteString -> [Fd] -> IO Int
-sendToWayland s bs fds = do
+sendToWayland :: Fd -> BS.ByteString -> [Fd] -> IO CInt
+sendToWayland socket bs fds = do
     CC.threadWaitWrite $ fromIntegral socket
     BS.useAsCStringLen bs sendData
     where
-        socket = Socket.fdSocket s
         c_fds = map fromIntegral fds
         sendData (bytePtr, byteLen) = withArrayLen c_fds $ \fdLen fdArray -> do
             let c_byteLen = fromIntegral byteLen
             let c_fdLen = fromIntegral fdLen
-            len <- c_sendmsg_wayland socket bytePtr c_byteLen fdArray c_fdLen
+            len <- c_sendmsg_wayland (fromIntegral socket) bytePtr c_byteLen fdArray c_fdLen
             if len < 0
                 then ioError $ userError "sendmsg failed"
-                else return $ fromIntegral len
+                else return len
 
 
-recvFromWayland :: Socket.Socket -> IO (BS.ByteString, [Fd])
-recvFromWayland s = allocaArray 4096 $ \cbuf -> do
+recvFromWayland :: Fd -> IO (BS.ByteString, [Fd])
+recvFromWayland socket = allocaArray 4096 $ \cbuf -> do
     CC.threadWaitRead $ fromIntegral socket
     alloca $ \nFds_ptr ->
         allocaArray (4*28) $ \fdArray -> do
-            len <- c_recvmsg_wayland socket cbuf 4096 fdArray (4*28) nFds_ptr
+            len <- c_recvmsg_wayland (fromIntegral socket) cbuf 4096 fdArray (4*28) nFds_ptr
             if len < 0
                 then ioError $ userError "recvmsg failed"
                 else do
@@ -81,5 +80,3 @@ recvFromWayland s = allocaArray 4096 $ \cbuf -> do
                     nFds <- peek nFds_ptr
                     fds <- peekArray (fromIntegral nFds) fdArray
                     return (bs, map fromIntegral fds)
-    where
-        socket = Socket.fdSocket s

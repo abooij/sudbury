@@ -11,14 +11,21 @@ This implements common crap.
 -}
 module Graphics.Sudbury.Crap.Common where
 
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Builder as BB
 import Data.Word
+import Data.Monoid
 import Control.Concurrent.STM
 import Foreign.Ptr
 import Foreign.StablePtr
 import Foreign.C.Types
 import Foreign.C.String
+import Foreign.Marshal.Array (peekArray0)
 import System.Posix.Types
 
+import Graphics.Sudbury.WireMessages
+import Graphics.Sudbury.WirePackages
 import Graphics.Sudbury.Argument
 
 import Graphics.Sudbury.Crap.Structs
@@ -48,7 +55,9 @@ typedef int (*wl_dispatcher_func_t)(const void *, void *, uint32_t,
 -- by an untyped StablePtr which we can later cast to the right type. sorry.
 type DispatcherFunc = FunPtr (DispatcherData -> StablePtr () -> CUInt -> Ptr WL_message -> Ptr WL_arg -> IO CInt)
 
-type Dispatcher = (DispatcherFunc, DispatcherData)
+type CDispatcher = (DispatcherFunc, DispatcherData)
+
+type HaskDispatcher = Word16 -> [CArgBox] -> IO ()
 
 charToArgType :: CChar -> ArgTypeBox
 charToArgType c =
@@ -61,6 +70,10 @@ charToArgType c =
        'a' -> ArgTypeBox SArrayWAT
        'h' -> ArgTypeBox SFdWAT
        o   -> error ("Unexpected argument '" ++ [o] ++ "' encountered")
+
+signatureToTypes :: CString -> IO [ArgTypeBox]
+signatureToTypes sig =
+  map charToArgType <$> peekArray0 0 sig
 
 generateId :: TVar Word32 -> TVar [Word32] -> STM Word32
 generateId lastId avail = do
@@ -88,3 +101,26 @@ type family CArgument (t :: ArgumentType) where
   CArgument 'FdWAT = Fd
 
 data CArgBox = forall t. CArgBox (SArgumentType t) (CArgument t)
+
+type MessageQueue = TQueue WireMessage
+type FdQueue = TQueue Fd
+
+takeFds :: FdQueue -> STM [Fd]
+takeFds queue = do
+  x <- tryReadTQueue queue
+  case x of
+    Nothing -> return []
+    Just fd -> do
+      fds <- takeFds queue
+      return $ fd : fds
+
+serializeQueue1 :: MessageQueue -> BB.Builder -> STM BB.Builder
+serializeQueue1 queue bs = do
+  msg <- tryReadTQueue queue
+  case msg of
+    Nothing -> return bs
+    Just x -> serializeQueue1 queue (bs <> (wirePack $ messageToPackage x))
+
+
+serializeQueue :: MessageQueue -> STM B.ByteString
+serializeQueue queue = BL.toStrict . BB.toLazyByteString <$> serializeQueue1 queue mempty

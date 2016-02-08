@@ -25,6 +25,9 @@
  * SOFTWARE.
  */
 
+#include <errno.h>
+#include <poll.h>
+
 #include <wayland-client.h>
 
 #define WL_CLOSURE_MAX_ARGS 20
@@ -119,4 +122,90 @@ wl_proxy_marshal_constructor(struct wl_proxy *proxy, uint32_t opcode,
 
 	return wl_proxy_marshal_array_constructor(proxy, opcode,
 						  args, interface);
+}
+
+// this should really be haskell code
+static void
+sync_callback(void *data, struct wl_callback *callback, uint32_t serial)
+{
+	int *done = data;
+
+	*done = 1;
+	wl_callback_destroy(callback);
+}
+
+static const struct wl_callback_listener sync_listener = {
+	sync_callback
+};
+WL_EXPORT int
+wl_display_roundtrip_queue(struct wl_display *display, struct wl_event_queue *queue)
+{
+	struct wl_callback *callback;
+	int done, ret = 0;
+
+	done = 0;
+	callback = wl_display_sync(display);
+	if (callback == NULL)
+		return -1;
+	wl_proxy_set_queue((struct wl_proxy *) callback, queue);
+	wl_callback_add_listener(callback, &sync_listener, &done);
+	while (!done && ret >= 0)
+		ret = wl_display_dispatch_queue(display, queue);
+
+	if (ret == -1 && !done)
+		wl_callback_destroy(callback);
+
+	return ret;
+}
+static int
+wl_display_poll(struct wl_display *display, short int events)
+{
+	int ret;
+	struct pollfd pfd[1];
+
+	pfd[0].fd = wl_display_get_fd(display);
+	pfd[0].events = events;
+	do {
+		ret = poll(pfd, 1, -1);
+	} while (ret == -1 && errno == EINTR);
+
+	return ret;
+}
+WL_EXPORT int
+wl_display_dispatch_queue(struct wl_display *display,
+			  struct wl_event_queue *queue)
+{
+	int ret;
+
+	if (wl_display_prepare_read_queue(display, queue) == -1)
+		return wl_display_dispatch_queue_pending(display, queue);
+
+	while (1) {
+		ret = wl_display_flush(display);
+
+		if (ret != -1 || errno != EAGAIN)
+			break;
+
+		if (wl_display_poll(display, POLLOUT) == -1) {
+			wl_display_cancel_read(display);
+			return -1;
+		}
+	}
+
+	/* Don't stop if flushing hits an EPIPE; continue so we can read any
+	 * protocol error that may have triggered it. */
+	if (ret < 0 && errno != EPIPE) {
+		wl_display_cancel_read(display);
+		return -1;
+	}
+
+	if (wl_display_poll(display, POLLIN) == -1) {
+		wl_display_cancel_read(display);
+		return -1;
+	}
+
+	if (wl_display_read_events(display) == -1)
+		return -1;
+
+	return wl_display_dispatch_queue_pending(display, queue);
 }

@@ -39,9 +39,10 @@ wirePackBuilder :: Word32 -> Word16 -> Word16 -> BB.Builder -> BB.Builder
 wirePackBuilder sender size opcode payload =
   BBE.word32Host sender
   <>
-  BBE.word16Host size
-  <>
+  -- FIXME make byte order portable here
   BBE.word16Host opcode
+  <>
+  BBE.word16Host size
   <>
   payload
 
@@ -57,5 +58,5 @@ parseWirePackage = do
                  , wirePackagePayload = payload
                  }
 
-parseStream :: A.Parser [WirePackage]
-parseStream = A.many' parseWirePackage
+pkgStream :: A.Parser [WirePackage]
+pkgStream = A.many' parseWirePackage

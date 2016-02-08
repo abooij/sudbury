@@ -15,49 +15,72 @@ The code in this module could benefit from some optics...
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Graphics.Sudbury.Crap.Client where
 
-import qualified Data.ByteString as BS
+import qualified Data.ByteString as B
 import Data.Word
 import Data.Int
 import Data.Maybe (fromMaybe, catMaybes)
+import qualified Data.IntMap as IM
 import Control.Concurrent.STM
 import Foreign.C
+import Foreign.C.Error
 import Foreign.Ptr
 import Foreign.StablePtr
 import Foreign.Storable
-import Foreign.Marshal.Array (peekArray0)
 import System.Posix.Types (Fd(..))
 import Network.Socket (fdSocket)
+import Data.Attoparsec.ByteString
 
 import Graphics.Sudbury.Argument
 import Graphics.Sudbury.Socket
+import Graphics.Sudbury.Socket.Wayland
+import Graphics.Sudbury.WirePackages
 import Graphics.Sudbury.WireMessages
 
+import Graphics.Sudbury.Crap.DispatchFFI
 import Graphics.Sudbury.Crap.Common
 import Graphics.Sudbury.Crap.Structs
+
+
+{-
+TODO
+
+- figure out which pointer arguments can be NULL
+- figure out which error conditions should be properly forwarded
+- match C code in wayland-client.c with libwayland code to track changes
+- minimize C code
+- minimize pointer dereferencing
+- rename proxy and proxyVal to proxyPtr and proxy
+-}
+
 
 -- stubs
 data TODO
 type MyEvent = TODO
 
-type EventQueue = TQueue MyEvent
-type MessageQueue = TQueue WireMessage
-type FdQueue = TQueue Fd
+type EventQueue = MessageQueue
+type ObjectMap = IM.IntMap Proxy
+
+data Callback = HaskCall HaskDispatcher
+              | FFICalls Listener
+              | DispCall CDispatcher
 
 data Proxy = Proxy
   { proxyParent :: Maybe Proxy
   , proxyDisplayData :: DisplayData
   , proxyDisplay :: Proxy
   , proxyQueue :: TVar (StablePtr EventQueue)
-  , proxyListener :: TVar (Maybe (Either Listener Dispatcher))  -- ^ listener/implementation or dispatcher (with data)
+  , proxyListener :: TVar (Maybe Callback)  -- ^ listener/implementation or dispatcher (with data)
   , proxyUserData :: TVar UserData
   , proxyId :: Word32
   , proxyInterface :: Ptr WL_interface
+  , proxyVersion :: Word32
   -- flags: destroyed, id_deleted?
   --
   }
 
 data DisplayData = DisplayData
-  { displayFd :: Fd
+  { displayInFd :: TMVar Fd
+  , displayOutFd :: TMVar Fd
   , displayErr :: TVar (Maybe (Int32, Maybe (Word32 , Ptr WL_interface , Word32)))
     -- ^ last_error, code, interface, id
   , displayDefaultQueue :: StablePtr EventQueue -- display_queue should be the proxy's queue
@@ -65,6 +88,7 @@ data DisplayData = DisplayData
   , displayFdQueue :: FdQueue -- fd's to be copied to the Other Side (tm)
   , displayLastId :: TVar Word32
   , displayFreeIds :: TVar [Word32]
+  , displayObjects :: TVar ObjectMap
   -- mutex?
   -- reader_cond?
   -- read_serial?
@@ -88,7 +112,7 @@ cArgToWireArg SIntWAT n = return (fromIntegral n , Nothing)
 cArgToWireArg SUIntWAT n = return (fromIntegral n , Nothing)
 cArgToWireArg SFixedWAT n = return (fromIntegral n , Nothing)
 cArgToWireArg SStringWAT cstr = do
-  bs <- BS.packCString cstr
+  bs <- B.packCString cstr
   return (bs , Nothing)
 cArgToWireArg SObjectWAT proxy = do
   proxyVal <- deRefStablePtr $ castPtrToStablePtr proxy
@@ -96,17 +120,27 @@ cArgToWireArg SObjectWAT proxy = do
 cArgToWireArg SNewIdWAT n = return (fromIntegral n , Nothing)
 cArgToWireArg SArrayWAT ar = do
   array <- peek ar
-  bs <- BS.packCStringLen (arrayData array , fromIntegral $ arraySize array)
+  bs <- B.packCStringLen (arrayData array , fromIntegral $ arraySize array)
   return (bs , Nothing)
 cArgToWireArg SFdWAT fd = do
   newfd <- os_dupfd_cloexec fd 0
   return (() , Just newfd)
   -- here we should duplicate the Fd and return it in the second argument
 
-getWireArg :: Ptr WL_arg -> SArgumentType t -> IO (WireArgument t , Maybe Fd)
-getWireArg ptr x = do
+-- this is a hack with STM
+-- TODO synchronize properly
+getWireArg :: Ptr WL_arg -> SArgumentType t -> Word32 -> IO (WireArgument t , Maybe Fd)
+getWireArg _ SNewIdWAT pid = return (pid , Nothing)
+getWireArg ptr x _ = do
   cArg <- readCArg ptr x
   cArgToWireArg x cArg
+
+haskInvoker :: Listener -> StablePtr Proxy -> Word16 -> [CArgBox] -> IO ()
+haskInvoker list proxy opcode args = do
+  fun <- peekElemOff list (fromIntegral opcode)
+  proxyVal <- deRefStablePtr proxy
+  udata <- readTVarIO $ proxyUserData proxyVal
+  invokeFFI fun udata (castStablePtrToPtr proxy) args
 
 {-
 
@@ -149,22 +183,51 @@ wl_proxy_marshal_array(struct wl_proxy *p, uint32_t opcode,
 		       union wl_argument *args);
 -}
 
+proxy_marshal_array :: StablePtr Proxy -> CUInt -> Ptr WL_arg -> IO ()
+proxy_marshal_array proxy opcode args = do
+  proxyVal <- deRefStablePtr proxy
+  iface <- peek (proxyInterface proxyVal)
+  msg <- peekElemOff (ifaceMethods iface) (fromIntegral opcode)
+  argTypes <- signatureToTypes (msgSignature msg)
+  -- TODO the following two expressions should be made prettier
+  let ptrs = iterate (flip plusPtr wl_arg_size) args
+  haskArgs <- sequence $ zipWith (
+    \(ArgTypeBox x) ptr -> do
+      (a , b) <- getWireArg ptr x undefined
+      return (WireArgBox x a , b)
+    ) argTypes ptrs
+  let wireMsg = WireMessage
+       { wireMessageSender = (proxyId proxyVal)
+       , wireMessageOpcode = fromIntegral opcode
+       , wireMessageArguments = fst $ unzip haskArgs
+       }
+  let fds = catMaybes $ snd $ unzip haskArgs
+  let dd = proxyDisplayData proxyVal
+      out_queue = displayOutQueue dd
+      fd_queue  = displayFdQueue dd
+  atomically $ do
+    writeTQueue out_queue wireMsg
+    mapM_ (writeTQueue fd_queue) fds
+  -- TODO actually send data (as in libwayland)
+  return ()
+
+foreign export ccall "wl_proxy_marshal_array" proxy_marshal_array
+  :: StablePtr Proxy -> CUInt -> Ptr WL_arg -> IO ()
+
 {-
 struct wl_proxy *
 wl_proxy_create(struct wl_proxy *factory,
 		const struct wl_interface *interface);
 -}
 
-proxy_create :: StablePtr Proxy -> Ptr WL_interface -> IO (StablePtr Proxy)
-proxy_create factory interface = do
+proxy_create :: StablePtr Proxy -> Word32 -> Ptr WL_interface -> IO (StablePtr Proxy)
+proxy_create factory pid interface = do
   factVal <- deRefStablePtr factory
   queueVar <- atomically $ do
     factQueue <- readTVar (proxyQueue factVal)
     newTVar factQueue
   listenerVar <- newTVarIO Nothing
   dataVar <- newTVarIO nullPtr
-  let dd = proxyDisplayData factVal
-  pid <- atomically $ generateId (displayLastId dd) (displayFreeIds dd)
 
   newStablePtr $ Proxy
     { proxyParent = Just factVal
@@ -175,6 +238,7 @@ proxy_create factory interface = do
     , proxyUserData = dataVar
     , proxyId = pid
     , proxyInterface = interface
+    , proxyVersion = proxyVersion factVal
     }
 
 {-
@@ -184,6 +248,17 @@ wl_proxy_marshal_constructor(struct wl_proxy *proxy,
 			     uint32_t opcode,
 			     const struct wl_interface *interface,
 			     ...);
+-}
+
+-- implemented in C to deal with vararg stuff natively
+
+{-
+struct wl_proxy *
+wl_proxy_marshal_constructor_versioned(struct wl_proxy *proxy,
+                                       uint32_t opcode,
+                                       const struct wl_interface *interface,
+                                       uint32_t version,
+                                       ...);
 -}
 
 -- implemented in C to deal with vararg stuff natively
@@ -208,24 +283,27 @@ foreign export ccall "proxy_msg_get_signature" proxy_msg_get_signature
 proxy_marshal_array_constructor :: StablePtr Proxy -> CUInt -> Ptr WL_arg -> Ptr WL_interface -> IO (StablePtr Proxy)
 proxy_marshal_array_constructor factory opcode args interface = do
   factVal <- deRefStablePtr factory
-  proxy <- proxy_create factory interface -- TODO execute in STM rather than IO
+  let dd = proxyDisplayData factVal
+  -- FIXME STM the following
+  pid <- atomically $ generateId (displayLastId dd) (displayFreeIds dd)
+  proxy <- proxy_create factory pid interface -- TODO execute in STM rather than IO
   iface <- peek (proxyInterface factVal)
   msg <- peekElemOff (ifaceMethods iface) (fromIntegral opcode)
-  argTypes <- map charToArgType <$> peekArray0 0 (msgSignature msg)
+  argTypes <- signatureToTypes (msgSignature msg)
   -- TODO the following two expressions should be made prettier
   let ptrs = iterate (flip plusPtr wl_arg_size) args
   haskArgs <- sequence $ zipWith (
     \(ArgTypeBox x) ptr -> do
-      (a , b) <- getWireArg ptr x
+      (a , b) <- getWireArg ptr x pid
       return (WireArgBox x a , b)
     ) argTypes ptrs
   let wireMsg = WireMessage
        { wireMessageSender = (proxyId factVal)
-       , wireMessageMessage = fromIntegral opcode
+       , wireMessageOpcode = fromIntegral opcode
        , wireMessageArguments = fst $ unzip haskArgs
        }
   let fds = catMaybes $ snd $ unzip haskArgs
-  let dd = proxyDisplayData factVal
+  let --dd = proxyDisplayData factVal
       out_queue = displayOutQueue dd
       fd_queue  = displayFdQueue dd
   atomically $ do
@@ -236,6 +314,15 @@ proxy_marshal_array_constructor factory opcode args interface = do
 
 foreign export ccall "wl_proxy_marshal_array_constructor" proxy_marshal_array_constructor
   :: StablePtr Proxy -> CUInt -> Ptr WL_arg -> Ptr WL_interface -> IO (StablePtr Proxy)
+
+{-
+struct wl_proxy *
+wl_proxy_marshal_array_constructor_versioned(struct wl_proxy *proxy,
+                                             uint32_t opcode,
+                                             union wl_argument *args,
+                                             const struct wl_interface *interface,
+                                             uint32_t version);
+-}
 
 {-
 void
@@ -280,7 +367,7 @@ proxy_add_listener :: StablePtr Proxy -> Listener -> UserData -> IO CInt
 proxy_add_listener proxy listener userdata = do
   proxyVal <- deRefStablePtr proxy
   atomically $ do
-    written <- writeMaybeTVar' (proxyListener proxyVal) (Left listener)
+    written <- writeMaybeTVar' (proxyListener proxyVal) (FFICalls listener)
     case written of
       True  -> do
         writeTVar (proxyUserData proxyVal) userdata
@@ -301,7 +388,7 @@ proxy_get_listener proxy = do
   proxyVal <- deRefStablePtr proxy
   val <- readTVarIO (proxyListener proxyVal)
   return $ case val of
-    Just (Left x) -> x
+    Just (FFICalls x) -> x
     _             -> nullPtr
 
 foreign export ccall "wl_proxy_get_listener" proxy_get_listener
@@ -318,7 +405,7 @@ proxy_add_dispatcher :: StablePtr Proxy -> DispatcherFunc -> DispatcherData -> U
 proxy_add_dispatcher proxy dispatcher ddata udata = do
   proxyVal <- deRefStablePtr proxy
   atomically $ do
-    written <- writeMaybeTVar' (proxyListener proxyVal) (Right (dispatcher , ddata))
+    written <- writeMaybeTVar' (proxyListener proxyVal) (DispCall (dispatcher , ddata))
     case written of
       True  -> do
         writeTVar (proxyUserData proxyVal) udata
@@ -354,6 +441,12 @@ proxy_get_user_data proxy = do
 
 foreign export ccall "wl_proxy_get_user_data" proxy_get_user_data
   :: StablePtr Proxy -> IO UserData
+
+{-
+uint32_t
+wl_proxy_get_version(struct wl_proxy *proxy);
+-}
+
 
 {-
 uint32_t
@@ -409,17 +502,23 @@ display_connect cstr = do
   default_queue <- newTQueueIO >>= newStablePtr
   out_queue <- newTQueueIO
   fd_queue <- newTQueueIO
-  last_id <- newTVarIO 0
+  last_id <- newTVarIO 1
   id_stack <- newTVarIO []
+  in_fd_var <- newTMVarIO fd
+  out_fd_var <- newTMVarIO fd
+  object_map <- newTVarIO IM.empty
+
 
   let dd = DisplayData
-        { displayFd = fd
+        { displayInFd = in_fd_var
+        , displayOutFd = out_fd_var
         , displayErr = err
         , displayDefaultQueue = default_queue
         , displayOutQueue = out_queue
         , displayFdQueue = fd_queue
         , displayLastId = last_id
         , displayFreeIds = id_stack
+        , displayObjects = object_map
         }
 
   queue <- newTQueueIO >>= newStablePtr >>= newTVarIO
@@ -432,9 +531,11 @@ display_connect cstr = do
         , proxyQueue = queue
         , proxyListener = listener
         , proxyUserData = udata
-        , proxyId = 0
+        , proxyId = 1
         , proxyInterface = display_interface
+        , proxyVersion = 0
         }
+  atomically $ modifyTVar object_map (IM.insert 0 proxy)
   newStablePtr proxy
 
 foreign export ccall "wl_display_connect" display_connect
@@ -462,7 +563,8 @@ wl_display_get_fd(struct wl_display *display);
 display_get_fd :: StablePtr Proxy -> IO Fd
 display_get_fd proxy = do
   proxyVal <- deRefStablePtr proxy
-  return $ displayFd $ proxyDisplayData proxyVal
+  fd <- atomically $ readTMVar $ displayInFd $ proxyDisplayData proxyVal
+  return fd
 
 foreign export ccall "wl_display_get_fd" display_get_fd
   :: StablePtr Proxy -> IO Fd
@@ -475,8 +577,7 @@ wl_display_dispatch(struct wl_display *display);
 display_dispatch :: StablePtr Proxy -> IO CInt
 display_dispatch proxy = do
   proxyVal <- deRefStablePtr proxy
-  default_queue <- deRefStablePtr $ displayDefaultQueue $ proxyDisplayData proxyVal
-  display_dispatch_queue' proxyVal default_queue
+  display_dispatch_queue proxy (displayDefaultQueue $ proxyDisplayData proxyVal)
 
 foreign export ccall "wl_display_dispatch" display_dispatch
   :: StablePtr Proxy -> IO CInt
@@ -487,8 +588,10 @@ wl_display_dispatch_queue(struct wl_display *display,
 			  struct wl_event_queue *queue);
 -}
 
-display_dispatch_queue' :: Proxy -> EventQueue -> IO CInt
-display_dispatch_queue' _ _ = error "dispatch undefined" -- TODO implement
+-- C
+
+foreign import ccall "wl_display_dispatch_queue" display_dispatch_queue
+  :: StablePtr Proxy -> StablePtr EventQueue -> IO CInt
 
 {-
 int
@@ -561,14 +664,34 @@ int
 wl_display_flush(struct wl_display *display);
 -}
 
+display_flush :: StablePtr Proxy -> IO CInt
+display_flush proxy = do
+  proxyVal <- deRefStablePtr proxy
+  let dd = proxyDisplayData proxyVal
+      fdVar = displayOutFd dd
+  fd <- atomically $ takeTMVar fdVar
+
+  (outData , outFds) <- atomically $ do
+    bytes <- serializeQueue (displayOutQueue dd)
+    fds <- takeFds (displayFdQueue dd)
+    return (bytes , fds)
+  print outData
+  sent <- sendToWayland fd outData outFds
+  atomically $ putTMVar fdVar fd
+  return sent
+
+foreign export ccall "wl_display_flush" display_flush
+  :: StablePtr Proxy -> IO CInt
+
 {-
 int
 wl_display_roundtrip_queue(struct wl_display *display,
 			   struct wl_event_queue *queue);
 -}
 
-display_roundtrip_queue' :: Proxy -> EventQueue -> IO CInt
-display_roundtrip_queue' = error "roundtrip undefined" -- TODO implement
+-- C
+foreign import ccall "wl_display_roundtrip_queue" display_roundtrip_queue
+  :: StablePtr Proxy -> StablePtr EventQueue -> IO CInt
 
 {-
 int
@@ -578,9 +701,9 @@ wl_display_roundtrip(struct wl_display *display);
 display_roundtrip :: StablePtr Proxy -> IO CInt
 display_roundtrip proxy = do
   proxyVal <- deRefStablePtr proxy
-  queue <- deRefStablePtr $ displayDefaultQueue $ proxyDisplayData proxyVal
+  let queue = displayDefaultQueue $ proxyDisplayData proxyVal
   -- TODO optimize the following: shouldn't need to deRef the StablePtrs again
-  display_roundtrip_queue' proxyVal queue
+  display_roundtrip_queue proxy queue
 
 foreign export ccall "wl_display_roundtrip" display_roundtrip
   :: StablePtr Proxy -> IO CInt
@@ -602,6 +725,26 @@ wl_display_prepare_read_queue(struct wl_display *display,
 			      struct wl_event_queue *queue);
 -}
 
+
+-- Foreign.C.Error would've been great if they had exposed this symbol...
+foreign import ccall unsafe "HsBase.h __hscore_set_errno" set_errno :: Errno -> IO ()
+
+-- | Implement wayland's locking scheme.
+display_prepare_read_queue :: StablePtr Proxy -> StablePtr EventQueue -> IO CInt
+display_prepare_read_queue _ queue = do
+  -- This scheme only works because of the assumption that
+  -- at most one (posix) thread reads from a given queue.
+  queueVal <- deRefStablePtr queue
+  empty <- atomically $ isEmptyTQueue queueVal
+  case empty of
+    True -> return 0
+    False -> do
+      set_errno eAGAIN
+      return (-1)
+
+foreign export ccall "wl_display_prepare_read_queue" display_prepare_read_queue
+  :: StablePtr Proxy -> StablePtr EventQueue -> IO CInt
+
 {-
 int
 wl_display_prepare_read(struct wl_display *display);
@@ -616,6 +759,83 @@ wl_display_cancel_read(struct wl_display *display);
 int
 wl_display_read_events(struct wl_display *display);
 -}
+
+queue_package :: ObjectMap -> WirePackage -> IO ()
+queue_package om pkg = do
+  let sender = wirePackageSender pkg
+      opcode = wirePackageOpcode pkg
+      proxy' = IM.lookup (fromIntegral sender) om
+  case proxy' of
+    Nothing -> return ()
+    Just proxy -> do
+      queue <- (readTVarIO $ proxyQueue proxy) >>= deRefStablePtr
+      iface <- peek (proxyInterface proxy)
+      wlmsg <- peekElemOff (ifaceEvents iface) (fromIntegral opcode)
+      let signature = msgSignature wlmsg
+      types <- signatureToTypes signature
+      let res = parse (payloadFromTypes sender opcode types) (wirePackagePayload pkg)
+      msg <- case res of
+        Fail _ _ err -> do
+          error ("Message parse failed: " ++ err)
+        Partial _ -> do
+          error "Unexpected incomplete wire message parse"
+        Done _  x -> return x
+      atomically $ do
+        writeTQueue queue msg
+
+
+-- | implement wayland's locking scheme for fd reading
+display_read_events :: StablePtr Proxy -> IO CInt
+display_read_events proxyPtr = do
+  proxy <- deRefStablePtr proxyPtr
+  let dd = proxyDisplayData proxy
+  out <- atomically $ do
+    err <- readTVar $ displayErr dd
+    case err of
+      Just (errNo , _) -> return $ Left errNo
+      Nothing -> do
+        fd <- tryTakeTMVar (displayInFd dd)
+        return $ Right fd
+  case out of
+    Left errNo -> do
+      set_errno (Errno $ fromIntegral errNo)
+      return (-1)
+    Right (Just fd) -> do
+      (bytes , fds) <- recvFromWayland fd
+      print $ B.length bytes
+      print bytes
+
+      let pkgsParse = parse pkgStream bytes
+      pkgs <-
+        case pkgsParse of
+          Fail _ _ err -> do
+            error ("Package parse failed: " ++ err)
+          Partial _ -> do
+            error "Unexpected incomplete wire package parse"
+          Done _ x -> return x
+      -- TODO write this bit. forward fds to queue_package somehow.
+      om <- readTVarIO (displayObjects dd)
+      mapM_ (queue_package om) pkgs
+
+      atomically $ putTMVar (displayInFd dd) fd
+      return 0
+    Right Nothing -> do
+      -- wait until the fd is returned (ie our queue is populated)
+      -- FIXME this is a sequential thread synchronization.
+      -- libwayland does this better (using pthread_cond_wait)
+      _ <- atomically $ readTMVar (displayInFd dd)
+      err <- atomically $ readTVar $ displayErr dd
+      -- i'm not sure why we're setting errno multiple times, but this is what libwayland does
+      -- FIXME sort this out
+      case err of
+        Just (errNo , _) -> do
+          set_errno (Errno $ fromIntegral errNo)
+          return (-1)
+        Nothing ->
+          return 0
+
+foreign export ccall "wl_display_read_events" display_read_events
+  :: StablePtr Proxy -> IO CInt
 
 {-
 void

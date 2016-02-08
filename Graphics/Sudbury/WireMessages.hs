@@ -15,9 +15,11 @@ import Data.Int
 import Data.Monoid
 import qualified Data.Attoparsec.ByteString as A
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Builder.Extra as BBE
 
+import Graphics.Sudbury.WirePackages
 import Graphics.Sudbury.Internal
 import Graphics.Sudbury.Argument
 import Graphics.Sudbury.Protocol.Types
@@ -36,7 +38,7 @@ data WireArgBox = forall t. WireArgBox (SArgumentType t) (WireArgument t)
 
 data WireMessage = WireMessage
   { wireMessageSender :: Word32
-  , wireMessageMessage :: Word32
+  , wireMessageOpcode :: Word16
   , wireMessageArguments :: [WireArgBox]
   }
 
@@ -65,23 +67,32 @@ boxedParse :: ArgTypeBox -> A.Parser WireArgBox
 boxedParse (ArgTypeBox tp) =
   WireArgBox tp <$> parseWireArgument tp
 
-decode :: Word32 -> Word32 -> WLMessage -> A.Parser WireMessage
+decode :: Word32 -> Word16 -> WLMessage -> A.Parser WireMessage
 decode sender opcode msg = do
   args <- mapM (boxedParse . argDataProj . argumentType) (messageArguments msg)
   return WireMessage
     { wireMessageSender = sender
-    , wireMessageMessage = opcode
+    , wireMessageOpcode = opcode
+    , wireMessageArguments = args
+    }
+
+payloadFromTypes :: Word32 -> Word16 -> [ArgTypeBox] -> A.Parser WireMessage
+payloadFromTypes sender opcode types = do
+  args <- mapM boxedParse types
+  return WireMessage
+    { wireMessageSender = sender
+    , wireMessageOpcode = opcode
     , wireMessageArguments = args
     }
 
 -- | Encode some argument values into a ByteString.
 --
 --   This does not produce a full wayland package. See 'Graphics.Sudbury.WirePackages.packBuilder'.
-encode :: [WireArgBox] -> BB.Builder
-encode = mconcat . map boxedEncode
+encodeArgs :: [WireArgBox] -> BB.Builder
+encodeArgs = mconcat . map boxedEncodeArgs
 
-boxedEncode :: WireArgBox -> BB.Builder
-boxedEncode (WireArgBox tp arg) = encodeArgument tp arg
+boxedEncodeArgs :: WireArgBox -> BB.Builder
+boxedEncodeArgs (WireArgBox tp arg) = encodeArgument tp arg
 
 buildWireByteString :: B.ByteString -> BB.Builder
 buildWireByteString bs =
@@ -105,3 +116,14 @@ encodeArgument SObjectWAT i = BBE.word32Host i
 encodeArgument SNewIdWAT i = BBE.word32Host i
 encodeArgument SArrayWAT bytes = buildWireByteString bytes
 encodeArgument SFdWAT () = mempty
+
+messageToPackage :: WireMessage -> WirePackage
+messageToPackage msg = WirePackage
+  { wirePackageSender = wireMessageSender msg
+  , wirePackageSize = 8 + (fromIntegral $ B.length payload)
+  , wirePackageOpcode = wireMessageOpcode msg
+  , wirePackagePayload = payload
+  }
+  where
+    payload :: B.ByteString
+    payload = BL.toStrict $ BB.toLazyByteString $ encodeArgs $ wireMessageArguments msg
