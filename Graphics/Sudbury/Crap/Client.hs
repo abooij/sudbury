@@ -773,13 +773,11 @@ queue_package om pkg = do
       wlmsg <- peekElemOff (ifaceEvents iface) (fromIntegral opcode)
       let signature = msgSignature wlmsg
       types <- signatureToTypes signature
-      let res = parse (payloadFromTypes sender opcode types) (wirePackagePayload pkg)
+      let res = parseOnly (payloadFromTypes sender opcode types) (wirePackagePayload pkg)
       msg <- case res of
-        Fail _ _ err -> do
+        Left err -> do
           error ("Message parse failed: " ++ err)
-        Partial _ -> do
-          error "Unexpected incomplete wire message parse"
-        Done _  x -> return x
+        Right x -> return x
       atomically $ do
         writeTQueue queue msg
 
@@ -805,14 +803,12 @@ display_read_events proxyPtr = do
       print $ B.length bytes
       print bytes
 
-      let pkgsParse = parse pkgStream bytes
+      let pkgsParse = parseOnly pkgStream bytes
       pkgs <-
         case pkgsParse of
-          Fail _ _ err -> do
+          Left err -> do
             error ("Package parse failed: " ++ err)
-          Partial _ -> do
-            error "Unexpected incomplete wire package parse"
-          Done _ x -> return x
+          Right x -> return x
       -- TODO write this bit. forward fds to queue_package somehow.
       om <- readTVarIO (displayObjects dd)
       mapM_ (queue_package om) pkgs
