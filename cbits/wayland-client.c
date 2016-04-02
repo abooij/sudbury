@@ -118,7 +118,7 @@ wl_proxy_marshal(struct wl_proxy *proxy, uint32_t opcode, ...)
 				 args, WL_CLOSURE_MAX_ARGS, ap);
 	va_end(ap);
 
-	wl_proxy_marshal_array_constructor(proxy, opcode, args, NULL);
+	wl_proxy_marshal_array(proxy, opcode, args);
 }
 WL_EXPORT struct wl_proxy *
 wl_proxy_marshal_constructor(struct wl_proxy *proxy, uint32_t opcode,
