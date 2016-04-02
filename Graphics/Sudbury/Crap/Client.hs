@@ -23,6 +23,7 @@ import qualified Data.IntMap as IM
 import Control.Concurrent.STM
 import Foreign.C
 import Foreign.C.Error
+import Foreign.Marshal.Array
 import Foreign.Ptr
 import Foreign.StablePtr
 import Foreign.Storable
@@ -109,7 +110,8 @@ cArgToWireArg SIntWAT n = return (fromIntegral n , Nothing)
 cArgToWireArg SUIntWAT n = return (fromIntegral n , Nothing)
 cArgToWireArg SFixedWAT n = return (fromIntegral n , Nothing)
 cArgToWireArg SStringWAT cstr = do
-  bs <- B.packCString cstr
+  len <- lengthArray0 0 cstr
+  bs <- B.packCStringLen (cstr , len + 1)
   return (bs , Nothing)
 cArgToWireArg SObjectWAT proxy = do
   proxyVal <- deRefStablePtr $ castPtrToStablePtr proxy
@@ -733,7 +735,12 @@ display_flush proxy = do
     bytes <- serializeQueue (displayOutQueue dd)
     fds <- takeFds (displayFdQueue dd)
     return (bytes , fds)
-  sent <- sendToWayland fd outData outFds
+  sent <-
+    if B.length outData == 0
+      then
+        return 0
+      else do
+        sendToWayland fd outData outFds
   atomically $ putTMVar fdVar fd
   return sent
 
@@ -781,7 +788,6 @@ int
 wl_display_prepare_read_queue(struct wl_display *display,
 			      struct wl_event_queue *queue);
 -}
-
 
 -- Foreign.C.Error would've been great if they had exposed this symbol...
 foreign import ccall unsafe "HsBase.h __hscore_set_errno" set_errno :: Errno -> IO ()
