@@ -61,9 +61,9 @@ type CDispatcher = (DispatcherFunc, DispatcherData)
 
 type HaskDispatcher = Word16 -> [CArgBox] -> IO ()
 
-charToArgType :: CChar -> ArgTypeBox
+charToArgType :: Char -> ArgTypeBox
 charToArgType c =
-  case castCCharToChar c of
+  case c of
        'i' -> ArgTypeBox SIntWAT
        'u' -> ArgTypeBox SUIntWAT
        'f' -> ArgTypeBox SFixedWAT
@@ -75,7 +75,7 @@ charToArgType c =
        o   -> error ("Unexpected argument '" ++ [o] ++ "' encountered")
 
 signatureToTypes :: CString -> IO [ArgTypeBox]
-signatureToTypes sig = map charToArgType <$> peekArray0 0 sig
+signatureToTypes sig = map charToArgType . filter (/='?') . map castCCharToChar <$> peekArray0 0 sig
 
 generateId :: TVar Word32 -> TVar [Word32] -> STM Word32
 generateId lastId avail = do
