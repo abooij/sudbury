@@ -35,6 +35,7 @@ import Graphics.Sudbury.Socket
 import Graphics.Sudbury.Socket.Wayland
 import Graphics.Sudbury.WirePackages
 import Graphics.Sudbury.WireMessages
+import Graphics.Sudbury.Message
 
 import Graphics.Sudbury.Crap.DispatchFFI
 import Graphics.Sudbury.Crap.Common
@@ -57,8 +58,8 @@ TODO
 data TODO
 type MyEvent = TODO
 
-type EventQueue = MessageQueue
-type ObjectMap = IM.IntMap Proxy
+type EventQueue = (MessageQueue , FdQueue)
+type ObjectMap = IM.IntMap (StablePtr Proxy)
 
 data Callback = HaskCall HaskDispatcher
               | FFICalls Listener
@@ -193,7 +194,8 @@ proxy_marshal_array proxy opcode args = do
   let ptrs = iterate (flip plusPtr wl_arg_size) args
   haskArgs <- sequence $ zipWith (
     \(ArgTypeBox x) ptr -> do
-      (a , b) <- getWireArg ptr x undefined
+      (a , b) <- getWireArg ptr x (error "Unexpected new_id argument!")
+      -- passing error as new_id here since this message should not have new_id arguments
       return (WireArgBox x a , b)
     ) argTypes ptrs
   let wireMsg = WireMessage
@@ -287,6 +289,9 @@ proxy_marshal_array_constructor factory opcode args interface = do
   -- FIXME STM the following
   pid <- atomically $ generateId (displayLastId dd) (displayFreeIds dd)
   proxy <- proxy_create factory pid interface -- TODO execute in STM rather than IO
+  -- TODO should the following be strict?
+  -- TODO the following fromIntegral should not be necessary
+  atomically $ modifyTVar (displayObjects dd) (IM.insert (fromIntegral pid) proxy)
   iface <- peek (proxyInterface factVal)
   msg <- peekElemOff (ifaceMethods iface) (fromIntegral opcode)
   argTypes <- signatureToTypes (msgSignature msg)
@@ -492,6 +497,12 @@ peekCStringMaybe cstr
 
 foreign import ccall unsafe "wayland-client.h &wl_display_interface" display_interface :: Ptr WL_interface
 
+newEventQueueIO :: IO EventQueue
+newEventQueueIO = do
+  msgs <- newTQueueIO
+  fds <- newTQueueIO
+  return (msgs , fds)
+
 display_connect :: CString -> IO (StablePtr Proxy)
 display_connect cstr = do
   str <- peekCStringMaybe cstr
@@ -499,7 +510,7 @@ display_connect cstr = do
   sock <- findServerSocketWithName' str >>= connectToServer
   let fd = Fd $ fdSocket sock
   err <- newTVarIO Nothing
-  default_queue <- newTQueueIO >>= newStablePtr
+  default_queue <- newEventQueueIO >>= newStablePtr
   out_queue <- newTQueueIO
   fd_queue <- newTQueueIO
   last_id <- newTVarIO 1
@@ -521,7 +532,7 @@ display_connect cstr = do
         , displayObjects = object_map
         }
 
-  queue <- newTQueueIO >>= newStablePtr >>= newTVarIO
+  queue <- newTVarIO default_queue
   listener <- newTVarIO Nothing
   udata <- newTVarIO nullPtr
   let proxy = Proxy
@@ -535,8 +546,10 @@ display_connect cstr = do
         , proxyInterface = display_interface
         , proxyVersion = 0
         }
-  atomically $ modifyTVar object_map (IM.insert 0 proxy)
-  newStablePtr proxy
+
+  ptr <- newStablePtr proxy
+  atomically $ modifyTVar object_map (IM.insert 1 ptr)
+  return ptr
 
 foreign export ccall "wl_display_connect" display_connect
   :: CString -> IO (StablePtr Proxy)
@@ -599,8 +612,50 @@ wl_display_dispatch_queue_pending(struct wl_display *display,
 				  struct wl_event_queue *queue);
 -}
 
+{-
+a -> (b -> c) -> c
+[a] -> ([b] -> c) -> c
+[] f = f []
+(x:xs) f = with x $ \x' -> rec xs (\l -> f (x':l))
+-}
+
+makeHandler :: ((b -> c) -> a -> c) -> ([b] -> c) -> [a] ->  c
+makeHandler _ f [] = f []
+makeHandler h f (x:xs) = h (\x' -> makeHandler h (\l -> f (x':l)) xs) x
+
 display_dispatch_queue_pending' :: Proxy -> EventQueue -> IO CInt
-display_dispatch_queue_pending' _ _ = error "dispatch pending undefined" -- TODO implement
+display_dispatch_queue_pending' proxy (events , fds) = do
+  let dd = proxyDisplayData proxy
+  objectMap <- readTVarIO (displayObjects dd)
+  let om pid = objectMap IM.! (fromIntegral pid)
+      om' pid = castStablePtrToPtr (om pid)
+  event <- atomically $ tryReadTQueue events
+  case event of
+    Nothing -> return 0
+    Just msg -> do
+      let sender = wireMessageSender msg
+          opcode = wireMessageOpcode msg
+          senderobj = om sender
+      senderval <- deRefStablePtr senderobj
+      listener <- readTVarIO (proxyListener senderval)
+      case listener of
+        Nothing -> return ()
+        Just (HaskCall dp) -> error "HaskCall not implemented"
+        Just (FFICalls li) -> do
+          imp <- peekElemOff li (fromIntegral opcode)
+          udata <- readTVarIO (proxyUserData senderval)
+          makeHandler (handleWireCArg om' fds) (\cargs -> invokeFFI imp udata (castStablePtrToPtr senderobj) cargs) (wireMessageArguments msg)
+        Just (DispCall cd) -> error "DispCall not implemented"
+      display_dispatch_queue_pending' proxy (events , fds)
+
+display_dispatch_queue_pending :: StablePtr Proxy -> StablePtr EventQueue -> IO CInt
+display_dispatch_queue_pending ptrP ptrE =
+  withStablePtr' ptrP $ \proxy ->
+    withStablePtr' ptrE $ \queue ->
+      display_dispatch_queue_pending' proxy queue
+
+foreign export ccall "wl_display_dispatch_queue_pending" display_dispatch_queue_pending
+  :: StablePtr Proxy -> StablePtr EventQueue -> IO CInt
 
 {-
 int
@@ -608,10 +663,9 @@ wl_display_dispatch_pending(struct wl_display *display);
 -}
 
 display_dispatch_pending :: StablePtr Proxy -> IO CInt
-display_dispatch_pending proxy = do
-  proxyVal <- deRefStablePtr proxy
-  default_queue <- deRefStablePtr $ displayDefaultQueue $ proxyDisplayData proxyVal
-  display_dispatch_queue_pending' proxyVal default_queue
+display_dispatch_pending = withStablePtr $ \proxy -> do
+  default_queue <- deRefStablePtr $ displayDefaultQueue $ proxyDisplayData proxy
+  display_dispatch_queue_pending' proxy default_queue
 
 foreign export ccall "wl_display_dispatch_pending" display_dispatch_pending
   :: StablePtr Proxy -> IO CInt
@@ -675,7 +729,6 @@ display_flush proxy = do
     bytes <- serializeQueue (displayOutQueue dd)
     fds <- takeFds (displayFdQueue dd)
     return (bytes , fds)
-  print outData
   sent <- sendToWayland fd outData outFds
   atomically $ putTMVar fdVar fd
   return sent
@@ -714,7 +767,7 @@ wl_display_create_queue(struct wl_display *display);
 -}
 
 display_create_queue :: StablePtr Proxy -> IO (StablePtr EventQueue)
-display_create_queue _ = newTQueueIO >>= newStablePtr
+display_create_queue _ = newEventQueueIO >>= newStablePtr
 
 foreign export ccall "wl_display_create_queue" display_create_queue
   :: StablePtr Proxy -> IO (StablePtr EventQueue)
@@ -734,7 +787,7 @@ display_prepare_read_queue :: StablePtr Proxy -> StablePtr EventQueue -> IO CInt
 display_prepare_read_queue _ queue = do
   -- This scheme only works because of the assumption that
   -- at most one (posix) thread reads from a given queue.
-  queueVal <- deRefStablePtr queue
+  (queueVal , _) <- deRefStablePtr queue
   empty <- atomically $ isEmptyTQueue queueVal
   case empty of
     True -> return 0
@@ -760,15 +813,16 @@ int
 wl_display_read_events(struct wl_display *display);
 -}
 
-queue_package :: ObjectMap -> WirePackage -> IO ()
-queue_package om pkg = do
+queue_package :: ObjectMap -> FdQueue -> WirePackage -> IO ()
+queue_package om fd_queue pkg = do
   let sender = wirePackageSender pkg
       opcode = wirePackageOpcode pkg
       proxy' = IM.lookup (fromIntegral sender) om
   case proxy' of
     Nothing -> return ()
-    Just proxy -> do
-      queue <- (readTVarIO $ proxyQueue proxy) >>= deRefStablePtr
+    Just proxyPtr -> do
+      proxy <- deRefStablePtr proxyPtr
+      (events , fds) <- (readTVarIO $ proxyQueue proxy) >>= deRefStablePtr
       iface <- peek (proxyInterface proxy)
       wlmsg <- peekElemOff (ifaceEvents iface) (fromIntegral opcode)
       let signature = msgSignature wlmsg
@@ -779,10 +833,30 @@ queue_package om pkg = do
           error ("Message parse failed: " ++ err)
         Right x -> return x
       atomically $ do
-        writeTQueue queue msg
+        writeTQueue events msg
+        -- TODO transfer as many fd's as we have in the signature
+        -- readTQueue fd_queue >>= writeTQueue fds
 
+pop_fd :: WireMessage -> FdQueue-> STM Message
+pop_fd msg queue = do
+  args <- mapM (\(WireArgBox x a) -> ArgBox x <$> (read_message_arg x a)) (wireMessageArguments msg)
+  return Message
+    { messageSender = wireMessageSender msg
+    , messageOpcode = wireMessageOpcode msg
+    , messageArguments = args
+    }
+    where
+      read_message_arg :: SArgumentType t -> WireArgument t -> STM (UnboxedArgument t)
+      read_message_arg SIntWAT n = return n
+      read_message_arg SUIntWAT n = return n
+      read_message_arg SFixedWAT n = return n
+      read_message_arg SStringWAT str = return str
+      read_message_arg SObjectWAT o = return o
+      read_message_arg SNewIdWAT n = return n
+      read_message_arg SArrayWAT a = return a
+      read_message_arg SFdWAT fd = readTQueue queue
 
--- | implement wayland's locking scheme for fd reading
+-- | implement wayland's locking scheme for fd reading, and read from the fd
 display_read_events :: StablePtr Proxy -> IO CInt
 display_read_events proxyPtr = do
   proxy <- deRefStablePtr proxyPtr
@@ -792,6 +866,7 @@ display_read_events proxyPtr = do
     case err of
       Just (errNo , _) -> return $ Left errNo
       Nothing -> do
+        -- FIXME this locking is too restrictive: might result in deadlock
         fd <- tryTakeTMVar (displayInFd dd)
         return $ Right fd
   case out of
@@ -800,8 +875,9 @@ display_read_events proxyPtr = do
       return (-1)
     Right (Just fd) -> do
       (bytes , fds) <- recvFromWayland fd
-      print $ B.length bytes
-      print bytes
+
+      fd_queue <- newTQueueIO
+      atomically $ mapM_ (writeTQueue fd_queue) fds
 
       let pkgsParse = parseOnly pkgStream bytes
       pkgs <-
@@ -809,9 +885,8 @@ display_read_events proxyPtr = do
           Left err -> do
             error ("Package parse failed: " ++ err)
           Right x -> return x
-      -- TODO write this bit. forward fds to queue_package somehow.
       om <- readTVarIO (displayObjects dd)
-      mapM_ (queue_package om) pkgs
+      mapM_ (queue_package om fd_queue) pkgs
 
       atomically $ putTMVar (displayInFd dd) fd
       return 0

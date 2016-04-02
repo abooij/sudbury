@@ -49,8 +49,8 @@ wirePackBuilder sender size opcode payload =
 parseWirePackage :: A.Parser WirePackage
 parseWirePackage = do
   sender <- anyWord32he
-  size   <- anyWord16he
   opcode <- anyWord16he
+  size   <- anyWord16he
   payload <- A.take (fromIntegral size - 8)
   return WirePackage { wirePackageSender  = sender
                  , wirePackageSize    = size

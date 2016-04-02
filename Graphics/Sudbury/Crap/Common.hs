@@ -14,6 +14,7 @@ module Graphics.Sudbury.Crap.Common where
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Builder as BB
+import Data.Fixed
 import Data.Word
 import Data.Monoid
 import Control.Concurrent.STM
@@ -22,6 +23,7 @@ import Foreign.StablePtr
 import Foreign.C.Types
 import Foreign.C.String
 import Foreign.Marshal.Array (peekArray0)
+import Foreign.Marshal.Utils (with)
 import System.Posix.Types
 
 import Graphics.Sudbury.WireMessages
@@ -65,6 +67,7 @@ charToArgType c =
        'i' -> ArgTypeBox SIntWAT
        'u' -> ArgTypeBox SUIntWAT
        'f' -> ArgTypeBox SFixedWAT
+       's' -> ArgTypeBox SStringWAT
        'o' -> ArgTypeBox SObjectWAT
        'n' -> ArgTypeBox SNewIdWAT
        'a' -> ArgTypeBox SArrayWAT
@@ -72,8 +75,7 @@ charToArgType c =
        o   -> error ("Unexpected argument '" ++ [o] ++ "' encountered")
 
 signatureToTypes :: CString -> IO [ArgTypeBox]
-signatureToTypes sig =
-  map charToArgType <$> peekArray0 0 sig
+signatureToTypes sig = map charToArgType <$> peekArray0 0 sig
 
 generateId :: TVar Word32 -> TVar [Word32] -> STM Word32
 generateId lastId avail = do
@@ -102,8 +104,26 @@ type family CArgument (t :: ArgumentType) where
 
 data CArgBox = forall t. CArgBox (SArgumentType t) (CArgument t)
 
+data CMessage = CMessage
+  { cMessageSender :: Word32
+  , cMessageOpcode :: Word16
+  , cMessageArguments :: [CArgBox]
+  }
+
 type MessageQueue = TQueue WireMessage
 type FdQueue = TQueue Fd
+
+handleWireCArg :: (Word32 -> Ptr ()) -> FdQueue -> (CArgBox -> IO a) ->  WireArgBox -> IO a
+handleWireCArg _ _   f (WireArgBox SIntWAT n)    = f (CArgBox SIntWAT (fromIntegral n))
+handleWireCArg _ _   f (WireArgBox SUIntWAT n)   = f (CArgBox SUIntWAT (fromIntegral n))
+handleWireCArg _ _   f (WireArgBox SFixedWAT (MkFixed n)) = f (CArgBox SFixedWAT (fromIntegral n))
+handleWireCArg _ _   f (WireArgBox SStringWAT s) = B.useAsCString s $ \cstr -> f (CArgBox SStringWAT cstr)
+handleWireCArg om _ f (WireArgBox SObjectWAT o) = f (CArgBox SObjectWAT (om o))
+handleWireCArg om _ f (WireArgBox SNewIdWAT n)  = f (CArgBox SObjectWAT (om n))
+handleWireCArg _ _   f (WireArgBox SArrayWAT a)  = B.useAsCStringLen a $ \(cstr, len) -> with (WL_array (fromIntegral len) (fromIntegral len) cstr) $ \ptr -> f (CArgBox SArrayWAT ptr)
+handleWireCArg _ queue f (WireArgBox SFdWAT _)  = do
+  Fd fd <- atomically $ readTQueue queue
+  f (CArgBox SFixedWAT fd)
 
 takeFds :: FdQueue -> STM [Fd]
 takeFds queue = do
@@ -124,3 +144,9 @@ serializeQueue1 queue bs = do
 
 serializeQueue :: MessageQueue -> STM B.ByteString
 serializeQueue queue = BL.toStrict . BB.toLazyByteString <$> serializeQueue1 queue mempty
+
+withStablePtr :: (a -> IO b) -> StablePtr a  -> IO b
+withStablePtr f ptr = deRefStablePtr ptr >>= f
+
+withStablePtr' :: StablePtr a -> (a -> IO b) -> IO b
+withStablePtr' = flip withStablePtr

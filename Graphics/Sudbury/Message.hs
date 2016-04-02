@@ -16,23 +16,25 @@ module Graphics.Sudbury.Message where
 import Data.Word
 import Data.Int
 import qualified Data.ByteString as B
+import System.Posix.Types
 
 import Graphics.Sudbury.Internal
 import Graphics.Sudbury.Argument
 
-type family UnboxedArgument (r :: *) (t :: ArgumentType) where
-  UnboxedArgument r 'IntWAT = Int32
-  UnboxedArgument r 'UIntWAT = Word32
-  UnboxedArgument r 'FixedWAT = Fixed23_8
-  UnboxedArgument r 'StringWAT = B.ByteString
-  UnboxedArgument r 'ObjectWAT = (r , Word32)
-  UnboxedArgument r 'NewIdWAT = (r , Word32)
-  UnboxedArgument r 'ArrayWAT = B.ByteString
-  UnboxedArgument r 'FdWAT = ()
+type family UnboxedArgument (t :: ArgumentType) where
+  UnboxedArgument 'IntWAT = Int32
+  UnboxedArgument 'UIntWAT = Word32
+  UnboxedArgument 'FixedWAT = Fixed23_8
+  UnboxedArgument 'StringWAT = B.ByteString
+  UnboxedArgument 'ObjectWAT = Word32
+  UnboxedArgument 'NewIdWAT = Word32
+  UnboxedArgument 'ArrayWAT = B.ByteString
+  UnboxedArgument 'FdWAT = Fd
 
-data ArgBox r = forall t. ArgBox (SArgumentType t) (UnboxedArgument r t)
+data ArgBox = forall t. ArgBox (SArgumentType t) (UnboxedArgument t)
 
-data Message r = Message
+data Message = Message
   { messageSender :: Word32
-  , messageArguments :: [ArgBox r]
+  , messageOpcode :: Word16
+  , messageArguments :: [ArgBox]
   }
