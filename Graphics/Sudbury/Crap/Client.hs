@@ -54,10 +54,6 @@ TODO
 -}
 
 
--- stubs
-data TODO
-type MyEvent = TODO
-
 type EventQueue = (MessageQueue , FdQueue)
 type ObjectMap = IM.IntMap (StablePtr Proxy)
 
@@ -222,8 +218,8 @@ wl_proxy_create(struct wl_proxy *factory,
 		const struct wl_interface *interface);
 -}
 
-proxy_create :: StablePtr Proxy -> Word32 -> Ptr WL_interface -> IO (StablePtr Proxy)
-proxy_create factory pid interface = do
+proxy_create :: StablePtr Proxy -> Word32 -> Ptr WL_interface -> Word32 -> IO (StablePtr Proxy)
+proxy_create factory pid interface version = do
   factVal <- deRefStablePtr factory
   queueVar <- atomically $ do
     factQueue <- readTVar (proxyQueue factVal)
@@ -240,7 +236,7 @@ proxy_create factory pid interface = do
     , proxyUserData = dataVar
     , proxyId = pid
     , proxyInterface = interface
-    , proxyVersion = proxyVersion factVal
+    , proxyVersion = version
     }
 
 {-
@@ -283,12 +279,29 @@ foreign export ccall "proxy_msg_get_signature" proxy_msg_get_signature
   :: StablePtr Proxy -> CUInt -> IO (Ptr CChar)
 
 proxy_marshal_array_constructor :: StablePtr Proxy -> CUInt -> Ptr WL_arg -> Ptr WL_interface -> IO (StablePtr Proxy)
-proxy_marshal_array_constructor factory opcode args interface = do
+proxy_marshal_array_constructor factoryP opcode args interface =
+  withStablePtr' factoryP $ \factory ->
+    proxy_marshal_array_constructor_versioned factoryP opcode args interface (fromIntegral $ proxyVersion factory)
+
+foreign export ccall "wl_proxy_marshal_array_constructor" proxy_marshal_array_constructor
+  :: StablePtr Proxy -> CUInt -> Ptr WL_arg -> Ptr WL_interface -> IO (StablePtr Proxy)
+
+{-
+struct wl_proxy *
+wl_proxy_marshal_array_constructor_versioned(struct wl_proxy *proxy,
+                                             uint32_t opcode,
+                                             union wl_argument *args,
+                                             const struct wl_interface *interface,
+                                             uint32_t version);
+-}
+
+proxy_marshal_array_constructor_versioned :: StablePtr Proxy -> CUInt -> Ptr WL_arg -> Ptr WL_interface -> CUInt -> IO (StablePtr Proxy)
+proxy_marshal_array_constructor_versioned factory opcode args interface version = do
   factVal <- deRefStablePtr factory
   let dd = proxyDisplayData factVal
   -- FIXME STM the following
   pid <- atomically $ generateId (displayLastId dd) (displayFreeIds dd)
-  proxy <- proxy_create factory pid interface -- TODO execute in STM rather than IO
+  proxy <- proxy_create factory pid interface (fromIntegral version) -- TODO execute in STM rather than IO
   -- TODO should the following be strict?
   -- TODO the following fromIntegral should not be necessary
   atomically $ modifyTVar (displayObjects dd) (IM.insert (fromIntegral pid) proxy)
@@ -317,17 +330,8 @@ proxy_marshal_array_constructor factory opcode args interface = do
   -- TODO actually send data (as in libwayland)
   return proxy
 
-foreign export ccall "wl_proxy_marshal_array_constructor" proxy_marshal_array_constructor
-  :: StablePtr Proxy -> CUInt -> Ptr WL_arg -> Ptr WL_interface -> IO (StablePtr Proxy)
-
-{-
-struct wl_proxy *
-wl_proxy_marshal_array_constructor_versioned(struct wl_proxy *proxy,
-                                             uint32_t opcode,
-                                             union wl_argument *args,
-                                             const struct wl_interface *interface,
-                                             uint32_t version);
--}
+foreign export ccall "wl_proxy_marshal_array_constructor_versioned" proxy_marshal_array_constructor_versioned
+  :: StablePtr Proxy -> CUInt -> Ptr WL_arg -> Ptr WL_interface -> CUInt -> IO (StablePtr Proxy)
 
 {-
 void

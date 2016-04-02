@@ -107,7 +107,19 @@ wl_argument_from_va_list(const char *signature, union wl_argument *args,
 
 char *
 proxy_msg_get_signature(struct wl_proxy*, uint32_t);
+WL_EXPORT void
+wl_proxy_marshal(struct wl_proxy *proxy, uint32_t opcode, ...)
+{
+	union wl_argument args[WL_CLOSURE_MAX_ARGS];
+	va_list ap;
 
+	va_start(ap, opcode);
+	wl_argument_from_va_list(proxy_msg_get_signature(proxy, opcode),
+				 args, WL_CLOSURE_MAX_ARGS, ap);
+	va_end(ap);
+
+	wl_proxy_marshal_array_constructor(proxy, opcode, args, NULL);
+}
 WL_EXPORT struct wl_proxy *
 wl_proxy_marshal_constructor(struct wl_proxy *proxy, uint32_t opcode,
 			     const struct wl_interface *interface, ...)
@@ -122,6 +134,24 @@ wl_proxy_marshal_constructor(struct wl_proxy *proxy, uint32_t opcode,
 
 	return wl_proxy_marshal_array_constructor(proxy, opcode,
 						  args, interface);
+}
+
+WL_EXPORT struct wl_proxy *
+wl_proxy_marshal_constructor_versioned(struct wl_proxy *proxy, uint32_t opcode,
+				       const struct wl_interface *interface,
+				       uint32_t version, ...)
+{
+	union wl_argument args[WL_CLOSURE_MAX_ARGS];
+	va_list ap;
+
+	va_start(ap, version);
+	wl_argument_from_va_list(proxy_msg_get_signature(proxy, opcode),
+				 args, WL_CLOSURE_MAX_ARGS, ap);
+	va_end(ap);
+
+	return wl_proxy_marshal_array_constructor_versioned(proxy, opcode,
+							    args, interface,
+							    version);
 }
 
 // this should really be haskell code
