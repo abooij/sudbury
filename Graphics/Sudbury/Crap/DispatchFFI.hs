@@ -17,13 +17,14 @@ import System.Posix.Types
 import Graphics.Sudbury.Argument
 import Graphics.Sudbury.Crap.Common
 
+-- See `convert_arguments_to_ffi` in connection.c in libwayland
 packageCArg :: SArgumentType t -> CArgument t -> Arg
 packageCArg SIntWAT    = argCInt
 packageCArg SUIntWAT   = argCUInt
 packageCArg SFixedWAT  = argCInt
 packageCArg SStringWAT = argPtr
 packageCArg SObjectWAT = argPtr
-packageCArg SNewIdWAT  = argCUInt
+packageCArg SNewIdWAT  = argPtr
 packageCArg SArrayWAT  = argPtr
 packageCArg SFdWAT     = argCInt . (\(Fd x) -> x)
 

@@ -15,6 +15,7 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Builder as BB
 import Data.Fixed
+import Data.Char
 import Data.Word
 import Data.Monoid
 import Control.Concurrent.STM
@@ -74,8 +75,10 @@ charToArgType c =
        'h' -> ArgTypeBox SFdWAT
        o   -> error ("Unexpected argument '" ++ [o] ++ "' encountered")
 
+-- TODO The filter in the following is probably a hack. We should probably use more information of the signature.
 signatureToTypes :: CString -> IO [ArgTypeBox]
-signatureToTypes sig = map charToArgType . filter (/='?') . map castCCharToChar <$> peekArray0 0 sig
+signatureToTypes sig = map charToArgType . filter isAlpha . traceId . map castCCharToChar <$> peekArray0 0 sig
+
 
 generateId :: TVar Word32 -> TVar [Word32] -> STM Word32
 generateId lastId avail = do
@@ -92,13 +95,14 @@ generateId lastId avail = do
 returnId :: Word32 -> TVar [Word32] -> STM ()
 returnId pid avail = modifyTVar avail (pid:)
 
+-- | See `convert_arguments_to_ffi` in connection.c in libwayland
 type family CArgument (t :: ArgumentType) where
   CArgument 'IntWAT = CInt
   CArgument 'UIntWAT = CUInt
   CArgument 'FixedWAT = CInt
   CArgument 'StringWAT = CString
   CArgument 'ObjectWAT = Ptr ()
-  CArgument 'NewIdWAT = CUInt
+  CArgument 'NewIdWAT = Ptr () -- NOTE this should be CUInt server-side
   CArgument 'ArrayWAT = Ptr WL_array
   CArgument 'FdWAT = Fd
 
@@ -118,8 +122,10 @@ handleWireCArg _ _   f (WireArgBox SIntWAT n)    = f (CArgBox SIntWAT (fromInteg
 handleWireCArg _ _   f (WireArgBox SUIntWAT n)   = f (CArgBox SUIntWAT (fromIntegral n))
 handleWireCArg _ _   f (WireArgBox SFixedWAT (MkFixed n)) = f (CArgBox SFixedWAT (fromIntegral n))
 handleWireCArg _ _   f (WireArgBox SStringWAT s) = B.useAsCString s $ \cstr -> f (CArgBox SStringWAT cstr)
-handleWireCArg om _ f (WireArgBox SObjectWAT o) = f (CArgBox SObjectWAT (om o))
-handleWireCArg om _ f (WireArgBox SNewIdWAT n)  = f (CArgBox SObjectWAT (om n))
+handleWireCArg _ _   f (WireArgBox SObjectWAT 0) = f (CArgBox SObjectWAT nullPtr)
+handleWireCArg _ _   f (WireArgBox SNewIdWAT 0)  = f (CArgBox SNewIdWAT nullPtr)
+handleWireCArg om _  f (WireArgBox SObjectWAT o) = f (CArgBox SObjectWAT (om o))
+handleWireCArg om _  f (WireArgBox SNewIdWAT n)  = f (CArgBox SNewIdWAT (om n))
 handleWireCArg _ _   f (WireArgBox SArrayWAT a)  = B.useAsCStringLen a $ \(cstr, len) -> with (WL_array (fromIntegral len) (fromIntegral len) cstr) $ \ptr -> f (CArgBox SArrayWAT ptr)
 handleWireCArg _ queue f (WireArgBox SFdWAT _)  = do
   Fd fd <- atomically $ readTQueue queue
