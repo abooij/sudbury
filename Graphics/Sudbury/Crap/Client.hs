@@ -922,3 +922,9 @@ foreign export ccall "wl_display_read_events" display_read_events
 void
 wl_log_set_handler_client(wl_log_func_t handler);
 -}
+
+log_set_handler_client :: Ptr () -> IO ()
+log_set_handler_client _ = return ()
+
+foreign export ccall "wl_log_set_handler_client" log_set_handler_client
+  :: Ptr () -> IO ()
