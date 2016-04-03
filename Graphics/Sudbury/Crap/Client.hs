@@ -113,10 +113,13 @@ cArgToWireArg SStringWAT cstr = do
   len <- lengthArray0 0 cstr
   bs <- B.packCStringLen (cstr , len + 1)
   return (bs , Nothing)
+-- FIXME the following two should be able to deal with incoming nullPtrs
 cArgToWireArg SObjectWAT proxy = do
   proxyVal <- deRefStablePtr $ castPtrToStablePtr proxy
   return (proxyId proxyVal , Nothing)
-cArgToWireArg SNewIdWAT n = return (fromIntegral n , Nothing)
+cArgToWireArg SNewIdWAT proxy = do
+  proxyVal <- deRefStablePtr $ castPtrToStablePtr proxy
+  return (proxyId proxyVal , Nothing)
 cArgToWireArg SArrayWAT ar = do
   array <- peek ar
   bs <- B.packCStringLen (arrayData array , fromIntegral $ arraySize array)

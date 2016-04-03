@@ -77,7 +77,7 @@ charToArgType c =
 
 -- TODO The filter in the following is probably a hack. We should probably use more information of the signature.
 signatureToTypes :: CString -> IO [ArgTypeBox]
-signatureToTypes sig = map charToArgType . filter isAlpha . traceId . map castCCharToChar <$> peekArray0 0 sig
+signatureToTypes sig = map charToArgType . filter isAlpha . map castCCharToChar <$> peekArray0 0 sig
 
 
 generateId :: TVar Word32 -> TVar [Word32] -> STM Word32
