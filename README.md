@@ -1,19 +1,22 @@
 Sudbury
 ===
-Previously, I wrote Haskell bindings to the C wayland library. But these are ugly and are not able to satisfy every need.
+The Haskell bindings to the C wayland library are ugly and are not able to satisfy every need.
+Ultimately, this seems to be due to the nature of the libwayland API: it hides as many implementation details as it can, and only exposes a minimal API, for a specific use case (namely compositors and windowed clients).
 
-After thinking about this problem for a while, I realized that this is ultimately due to the nature of the libwayland API: it is simply not very flexible. This is reflected by the fact that there are many wayland utilities (e.g. middle-man protocol dumpers) that simply end up copy-pasting a bunch of wayland implementation code.
+Let's develop a more friendly and inviting library.
+Sudbury is an attempt to serve many usages of the wayland protocol: desktop applications, compositors, protocol dumpers, test utilities, ...
 
-Surely we can do better.
+In addition, we would like to support many different programming paradigms - especially since in Haskell there are many different approaches to streaming IO (lazy IO, conduit, pipes, io-streams, ...) and event handling (polling, callbacks, FRP, ...).
 
-This is an attempt at creating an elegant wayland library that will serve many purposes: desktop applications, compositors, protocol dumpers, test utilities, ...
+While libwayland _hides_ implementation details, sudbury _exposes_ implementation details.
+To that end, as a rule of thumb, the haskell modules in this library expose all the (top-level) variables that they define.
+In particular, we minimize the amount of code that is considered "internal".
+Indeed, the philosophy is that we should not _decide_ what API should be used, but merely _offer_ users a safe API by making that component the most friendly and inviting API.
 
-In addition, I want to support many different programming paradigms - especially since in Haskell there are many different approaches to streaming IO (lazy IO, conduit, pipes, io-streams, ...) and event handling (polling, callbacks, FRP, ...), which I would all like to support equally well.
-
-In case you were wondering if Sudbury might be a town close to Wayland, MA: you are right. I'm not good in naming things. Deal with it.
+We intend to place unsafe code in self-contained modules, separated from the Haskell code we intend users to use directly.
 
 Status (April 2016)
 ---
-So far, my main focus is implementing a C ABI for the client side.
+So far, the main focus is implementing a C ABI for the client side.
 As of commit e3c6af6, the "weston-simple-damage" demo runs (which means we can show a ball bouncing around on the screen).
-I will continue working to get clients to work, and perhaps do some work on the server side, and move on to writing a pretty Haskell API.
+The Haskell API is still rather limited, and the server side ABI has not yet been written.
