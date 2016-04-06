@@ -240,33 +240,41 @@ static const struct wl_message wl_data_offer_requests[] = {
 	{ "accept", "u?s", types + 0 },
 	{ "receive", "sh", types + 0 },
 	{ "destroy", "", types + 0 },
+	{ "finish", "3", types + 0 },
+	{ "set_actions", "3uu", types + 0 },
 };
 
 static const struct wl_message wl_data_offer_events[] = {
 	{ "offer", "s", types + 0 },
+	{ "source_actions", "3u", types + 0 },
+	{ "action", "3u", types + 0 },
 };
 
 WL_EXPORT const struct wl_interface wl_data_offer_interface = {
-	"wl_data_offer", 1,
-	3, wl_data_offer_requests,
-	1, wl_data_offer_events,
+	"wl_data_offer", 3,
+	5, wl_data_offer_requests,
+	3, wl_data_offer_events,
 };
 
 static const struct wl_message wl_data_source_requests[] = {
 	{ "offer", "s", types + 0 },
 	{ "destroy", "", types + 0 },
+	{ "set_actions", "3u", types + 0 },
 };
 
 static const struct wl_message wl_data_source_events[] = {
 	{ "target", "?s", types + 0 },
 	{ "send", "sh", types + 0 },
 	{ "cancelled", "", types + 0 },
+	{ "dnd_drop_performed", "3", types + 0 },
+	{ "dnd_finished", "3", types + 0 },
+	{ "action", "3u", types + 0 },
 };
 
 WL_EXPORT const struct wl_interface wl_data_source_interface = {
-	"wl_data_source", 1,
-	2, wl_data_source_requests,
-	3, wl_data_source_events,
+	"wl_data_source", 3,
+	3, wl_data_source_requests,
+	6, wl_data_source_events,
 };
 
 static const struct wl_message wl_data_device_requests[] = {
@@ -285,7 +293,7 @@ static const struct wl_message wl_data_device_events[] = {
 };
 
 WL_EXPORT const struct wl_interface wl_data_device_interface = {
-	"wl_data_device", 2,
+	"wl_data_device", 3,
 	3, wl_data_device_requests,
 	6, wl_data_device_events,
 };
@@ -296,7 +304,7 @@ static const struct wl_message wl_data_device_manager_requests[] = {
 };
 
 WL_EXPORT const struct wl_interface wl_data_device_manager_interface = {
-	"wl_data_device_manager", 2,
+	"wl_data_device_manager", 3,
 	2, wl_data_device_manager_requests,
 	0, NULL,
 };
@@ -389,12 +397,16 @@ static const struct wl_message wl_pointer_events[] = {
 	{ "motion", "uff", types + 0 },
 	{ "button", "uuuu", types + 0 },
 	{ "axis", "uuf", types + 0 },
+	{ "frame", "5", types + 0 },
+	{ "axis_source", "5u", types + 0 },
+	{ "axis_stop", "5uu", types + 0 },
+	{ "axis_discrete", "5ui", types + 0 },
 };
 
 WL_EXPORT const struct wl_interface wl_pointer_interface = {
-	"wl_pointer", 3,
+	"wl_pointer", 5,
 	2, wl_pointer_requests,
-	5, wl_pointer_events,
+	9, wl_pointer_events,
 };
 
 static const struct wl_message wl_keyboard_requests[] = {
@@ -411,7 +423,7 @@ static const struct wl_message wl_keyboard_events[] = {
 };
 
 WL_EXPORT const struct wl_interface wl_keyboard_interface = {
-	"wl_keyboard", 4,
+	"wl_keyboard", 5,
 	1, wl_keyboard_requests,
 	6, wl_keyboard_events,
 };
@@ -429,7 +441,7 @@ static const struct wl_message wl_touch_events[] = {
 };
 
 WL_EXPORT const struct wl_interface wl_touch_interface = {
-	"wl_touch", 3,
+	"wl_touch", 5,
 	1, wl_touch_requests,
 	5, wl_touch_events,
 };

@@ -56,7 +56,9 @@ parseWireByteString = do
 parseWireArgument :: SArgumentType t -> A.Parser (WireArgument t)
 parseWireArgument SIntWAT = anyInt32he
 parseWireArgument SUIntWAT = anyWord32he
-parseWireArgument SFixedWAT = MkFixed . fromIntegral <$> anyInt32he
+parseWireArgument SFixedWAT = do
+  n <- anyInt32he
+  return (MkFixed (fromIntegral n))
 parseWireArgument SStringWAT = parseWireByteString
 parseWireArgument SObjectWAT = anyWord32he
 parseWireArgument SNewIdWAT = anyWord32he
