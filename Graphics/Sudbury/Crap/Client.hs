@@ -16,9 +16,10 @@ The code in this module could benefit from some optics...
 module Graphics.Sudbury.Crap.Client where
 
 import qualified Data.ByteString as B
+import Control.Monad (foldM_)
 import Data.Word
 import Data.Int
-import Data.Maybe (fromMaybe, catMaybes)
+import Data.Maybe (fromMaybe , catMaybes)
 import qualified Data.IntMap as IM
 import Control.Concurrent.STM
 import Foreign.C
@@ -854,6 +855,17 @@ queue_package om fd_queue pkg = do
         Left err -> do
           error ("Message parse failed: " ++ err)
         Right x -> return x
+      let dd = proxyDisplayData proxy
+          om = displayObjects dd
+          version = proxyVersion proxy
+          storeNewId :: Ptr (Ptr WL_interface) -> Int -> WireArgBox -> IO Int
+          storeNewId ptr idx (WireArgBox SNewIdWAT n) = do
+            iface <- peekElemOff ptr idx
+            newProxy <- proxy_create proxyPtr n iface version
+            atomically $ modifyTVar om (IM.insert (fromIntegral n) newProxy)
+            return $ idx + 1
+          storeNewId _ idx (WireArgBox _ _) = return idx
+      foldM_ (storeNewId (msgInterfaces wlmsg)) 0 (wireMessageArguments msg)
       atomically $ do
         -- Store this package in the right queue, and give that queue the right number of Fds
         writeTQueue events msg
