@@ -355,9 +355,14 @@ wl_proxy_destroy(struct wl_proxy *proxy);
 -- this function is dangerous for values of type Ptr Proxy that were not created using wl_proxy_create
 -- (but this is nothing new w.r.t. the C side: don't destroy stuff you didn't create)
 proxy_destroy :: StablePtr Proxy -> IO ()
-proxy_destroy proxy = do
-  -- TODO update object map (ie free proxy id)
-  freeStablePtr proxy
+proxy_destroy proxyPtr = do
+  proxy <- deRefStablePtr proxyPtr
+  let dd = proxyDisplayData proxy
+      om = displayObjects dd
+  -- Here, libwayland differentiates between client-side and server-side objects
+  -- and acts differently according to that. We need to figure out the purpose of that.
+  atomically $ modifyTVar om (IM.delete (fromIntegral (proxyId proxy)))
+  freeStablePtr proxyPtr
 
 foreign export ccall "wl_proxy_destroy" proxy_destroy
   :: StablePtr Proxy -> IO ()
