@@ -110,10 +110,13 @@ cArgToWireArg :: SArgumentType t -> CArgument t -> IO (WireArgument t , Maybe Fd
 cArgToWireArg SIntWAT n = return (fromIntegral n , Nothing)
 cArgToWireArg SUIntWAT n = return (fromIntegral n , Nothing)
 cArgToWireArg SFixedWAT n = return (fromIntegral n , Nothing)
-cArgToWireArg SStringWAT cstr = do
-  len <- lengthArray0 0 cstr
-  bs <- B.packCStringLen (cstr , len + 1)
-  return (bs , Nothing)
+cArgToWireArg SStringWAT cstr
+  | cstr == nullPtr = return (B.empty , Nothing)
+  | otherwise       =
+    do
+    len <- lengthArray0 0 cstr
+    bs <- B.packCStringLen (cstr , len + 1)
+    return (bs , Nothing)
 cArgToWireArg SObjectWAT proxy
   | proxy == nullPtr = return (0 , Nothing)
   | otherwise        =
