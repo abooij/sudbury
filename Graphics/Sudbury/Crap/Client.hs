@@ -831,6 +831,10 @@ int
 wl_display_read_events(struct wl_display *display);
 -}
 
+arg_pipe_fd :: FdQueue -> FdQueue -> SArgumentType t -> STM ()
+arg_pipe_fd popQueue pushQueue SFdWAT = readTQueue popQueue >>= writeTQueue pushQueue
+arg_pipe_fd _ _ _ = return ()
+
 queue_package :: ObjectMap -> FdQueue -> WirePackage -> IO ()
 queue_package om fd_queue pkg = do
   let sender = wirePackageSender pkg
@@ -851,9 +855,9 @@ queue_package om fd_queue pkg = do
           error ("Message parse failed: " ++ err)
         Right x -> return x
       atomically $ do
+        -- Store this package in the right queue, and give that queue the right number of Fds
         writeTQueue events msg
-        -- TODO transfer as many fd's as we have in the signature
-        -- readTQueue fd_queue >>= writeTQueue fds
+        mapM_ (\(ArgTypeBox x) -> arg_pipe_fd fd_queue fds x) types
 
 pop_fd :: WireMessage -> FdQueue-> STM Message
 pop_fd msg queue = do
