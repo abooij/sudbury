@@ -1,6 +1,6 @@
 {-|
-Module      : Graphics.Sudbury.Crap.DispatchFFI
-Description : C API crap
+Module      : Graphics.Sudbury.CABI.DispatchFFI
+Description : C ABI
 Copyright   : (c) Auke Booij, 2015
 License     : MIT
 Maintainer  : auke@tulcod.com
@@ -8,14 +8,14 @@ Stability   : experimental
 
 Use libffi to call C functions for callbacks
 -}
-module Graphics.Sudbury.Crap.DispatchFFI where
+module Graphics.Sudbury.CABI.DispatchFFI where
 
 import Foreign.Ptr
 import Foreign.LibFFI
 import System.Posix.Types
 
 import Graphics.Sudbury.Argument
-import Graphics.Sudbury.Crap.Common
+import Graphics.Sudbury.CABI.Common
 
 -- See `convert_arguments_to_ffi` in connection.c in libwayland
 packageCArg :: SArgumentType t -> CArgument t -> Arg

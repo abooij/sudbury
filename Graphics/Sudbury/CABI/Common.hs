@@ -1,15 +1,15 @@
 {-|
-Module      : Graphics.Sudbury.Crap.Common
-Description : C API crap
+Module      : Graphics.Sudbury.CABI.Common
+Description : C ABI
 Copyright   : (c) Auke Booij, 2015
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 
-The wayland C API has some free crap included in it.
-This implements common crap.
+We attempt to implement the ABI of the libwayland C library.
+This implements some common tools to implement this ABI.
 -}
-module Graphics.Sudbury.Crap.Common where
+module Graphics.Sudbury.CABI.Common where
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
@@ -31,7 +31,7 @@ import Graphics.Sudbury.WireMessages
 import Graphics.Sudbury.WirePackages
 import Graphics.Sudbury.Argument
 
-import Graphics.Sudbury.Crap.Structs
+import Graphics.Sudbury.CABI.Structs
 
 -- | A specific implementation (ie for one opcode) is some abstract function
 -- pointer. Since libffi doesn't care anyway, we'll make it something trivial.

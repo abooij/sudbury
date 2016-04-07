@@ -1,15 +1,15 @@
 {-|
-Module      : Graphics.Sudbury.Crap.Structs
-Description : C API crap
+Module      : Graphics.Sudbury.CABI.Structs
+Description : C ABI
 Copyright   : (c) Auke Booij, 2015
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 
-The wayland C API has some free crap included in it.
+We attempt to implement the ABI of the libwayland C library.
 This implements proper binding to C structs.
 -}
-module Graphics.Sudbury.Crap.Structs where
+module Graphics.Sudbury.CABI.Structs where
 
 import Data.Word
 import Foreign.Ptr

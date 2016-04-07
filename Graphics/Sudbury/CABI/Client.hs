@@ -1,19 +1,17 @@
 {-|
-Module      : Graphics.Sudbury.Crap.Client
-Description : C API crap
+Module      : Graphics.Sudbury.CABI.Client
+Description : C ABI
 Copyright   : (c) Auke Booij, 2015
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 
-The wayland C API has some free crap included in it.
-This implements client crap.
-
-The code in this module could benefit from some optics...
+We attempt to implement the ABI of the libwayland C library.
+This implements the server-side ABI.
 -}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-module Graphics.Sudbury.Crap.Client where
+module Graphics.Sudbury.CABI.Client where
 
 import qualified Data.ByteString as B
 import Control.Monad (foldM_)
@@ -39,9 +37,9 @@ import Graphics.Sudbury.WirePackages
 import Graphics.Sudbury.WireMessages
 import Graphics.Sudbury.Message
 
-import Graphics.Sudbury.Crap.DispatchFFI
-import Graphics.Sudbury.Crap.Common
-import Graphics.Sudbury.Crap.Structs
+import Graphics.Sudbury.CABI.DispatchFFI
+import Graphics.Sudbury.CABI.Common
+import Graphics.Sudbury.CABI.Structs
 
 
 {-

@@ -36,11 +36,11 @@ library
     , Graphics.Sudbury.Object
     , Graphics.Sudbury.State
     , Graphics.Sudbury.Message
-    , Graphics.Sudbury.Crap.Client
-    , Graphics.Sudbury.Crap.Server
-    , Graphics.Sudbury.Crap.Common
-    , Graphics.Sudbury.Crap.Structs
-    , Graphics.Sudbury.Crap.DispatchFFI
+    , Graphics.Sudbury.CABI.Client
+    , Graphics.Sudbury.CABI.Server
+    , Graphics.Sudbury.CABI.Common
+    , Graphics.Sudbury.CABI.Structs
+    , Graphics.Sudbury.CABI.DispatchFFI
   -- other-modules:
   -- other-extensions:
   build-depends:
