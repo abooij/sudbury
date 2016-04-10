@@ -15,6 +15,19 @@ Indeed, the philosophy is that we should not _decide_ what API should be used, b
 
 We intend to place unsafe code in self-contained modules, separated from the Haskell code we intend users to use directly.
 
+Building and running
+---
+The package should be buildable using cabal or stack.
+
+Note that the `libwayland-client.so.0` shared library will __not__ be installed in the correct location.
+This is because we are, technically speaking, compiling this library as an executable.
+This is because of limitations of the cabal build system.
+
+After building sudbury, you should be able to, for example, run weston executables as follows:
+```
+$ LD_LIBRARY_PATH=.:dist/build weston-flower
+```
+
 Status (April 2016)
 ---
 So far, the main focus is implementing a C ABI for the client side.
