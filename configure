@@ -1,0 +1,53 @@
+#!/usr/bin/env sh
+
+compiler="ghc"
+
+TEMP=$(getopt -q --long with-compiler: -n 'configure' -- "$@")
+eval set -- "$TEMP"
+
+while true
+do
+    case "$1" in
+        --with-compiler)
+            compiler=$2
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+compiler_version=$(${compiler} --numeric-version)
+echo "Using compiler version: ${compiler_version}"
+
+libdir=$(${compiler} --print-libdir)
+echo "Found compiler libraries at: ${libdir}"
+
+function find_lib {
+    local lib_filename=$(find $libdir -name "libHS$1-*ghc${compiler_version}.so" -printf '%f')
+    local lib_parse1=${lib_filename%.so}
+    echo "${lib_parse1#lib}"
+}
+
+rts=$(find_lib rts)
+echo "Found GHC RTS library as: $rts"
+ghc_prim=$(find_lib ghc-prim)
+echo "Found GHC prim library as: $ghc_prim"
+base=$(find_lib base)
+echo "Found GHC base library as: $base"
+integer_gmp=$(find_lib integer-gmp)
+echo "Found GHC Integer GMP library at: $integer_gmp"
+
+cat > sudbury.buildinfo <<EOF
+executable: libwayland-client.so.0
+extra-libraries:
+    ${rts}
+  , ${ghc_prim}
+  , ${base}
+  , ${integer_gmp}
+EOF

@@ -8,3 +8,6 @@ cabal-dev
 cabal.sandbox.config
 TAGS
 tags
+sudbury.buildinfo
+.stack-work
+Main
