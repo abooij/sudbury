@@ -28,8 +28,10 @@ After building sudbury, you should be able to, for example, run weston executabl
 $ LD_LIBRARY_PATH=.:dist/build weston-flower
 ```
 
+> Portability: The wayland protocol works via unix domain sockets that support passing file descriptors. That means that even if this builds on non-Linux systems, it will likely not work.
+
 Status (April 2016)
 ---
 So far, the main focus is implementing a C ABI for the client side.
-As of commit e3c6af6, the "weston-simple-damage" demo runs (which means we can show a ball bouncing around on the screen).
-The Haskell API is still rather limited, and the server side ABI has not yet been written.
+As of commit ea66bb7, most weston demo clients run correctly (see issue #5 for progress).
+The Haskell API is still rather limited (see issue #2 for progress), and the server side ABI has not yet been written (see issue #3 for progress).
