@@ -64,6 +64,7 @@ library
   ghc-options: -Wall -fwarn-incomplete-record-updates -fwarn-unused-do-bind
 
 executable libwayland-client.so.0
+  hs-source-dirs: .
   main-is: Main.hs
   other-modules:
       Graphics.Sudbury.CABI.Client
@@ -103,8 +104,8 @@ executable libwayland-client.so.0
   ghc-options: -Wall -fwarn-incomplete-record-updates -fwarn-unused-do-bind
 
 test-suite tests
-   main-is: Main.hs
    hs-source-dirs: tests
+   main-is: tests/Main.hs
    other-modules:
       Wire
     , Arbitrary
