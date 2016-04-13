@@ -1,4 +1,5 @@
 resolver: lts-5.11
+compiler: ghc-7.10.3
 
 packages:
 - '.'
