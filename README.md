@@ -23,7 +23,12 @@ Note that the `libwayland-client.so.0` shared library will __not__ be installed 
 This is because we are, technically speaking, compiling this library as an executable.
 This is because of limitations of the cabal build system.
 
-After building sudbury, you should be able to, for example, run weston executables as follows:
+If you built the project with stack, you can use it as follows:
+```
+$ LD_LIBRARY_PATH=.stack-work/install/x86_64-linux/lts-5.11/7.10.3/bin weston-flower
+```
+
+If you built the project with cabal, you can use it as follows:
 ```
 $ LD_LIBRARY_PATH=.:dist/build weston-flower
 ```
