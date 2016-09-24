@@ -361,7 +361,6 @@ proxy_destroy proxyPtr = do
   let dd = proxyDisplayData proxy
   -- Here, libwayland differentiates between client-side and server-side objects
   -- and acts differently according to that. We need to figure out the purpose of that.
-  print $ "Destroying proxy " ++ show (proxyId proxy)
   atomically $ localDestroy (displayLifetime dd) (proxyId proxy)
   freeStablePtr proxyPtr
   -- TODO free id? or should that be done in the delete_id handler?
