@@ -476,6 +476,11 @@ uint32_t
 wl_proxy_get_version(struct wl_proxy *proxy);
 -}
 
+proxy_get_version :: StablePtr Proxy -> IO CUInt
+proxy_get_version = withStablePtr (return . fromIntegral . proxyVersion)
+
+foreign export ccall "wl_proxy_get_version" proxy_get_version
+  :: StablePtr Proxy -> IO CUInt
 
 {-
 uint32_t
