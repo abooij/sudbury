@@ -122,7 +122,7 @@ encodeArgument SFdWAT () = mempty
 messageToPackage :: WireMessage -> WirePackage
 messageToPackage msg = WirePackage
   { wirePackageSender = wireMessageSender msg
-  , wirePackageSize = 8 + (fromIntegral $ B.length payload)
+  , wirePackageSize = 8 + fromIntegral (B.length payload)
   , wirePackageOpcode = wireMessageOpcode msg
   , wirePackagePayload = payload
   }

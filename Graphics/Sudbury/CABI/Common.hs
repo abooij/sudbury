@@ -135,8 +135,8 @@ serializeQueue1 queue bs = do
 serializeQueue :: MessageQueue -> STM B.ByteString
 serializeQueue queue = BL.toStrict . BB.toLazyByteString <$> serializeQueue1 queue mempty
 
-withStablePtr :: (a -> IO b) -> StablePtr a  -> IO b
-withStablePtr f ptr = deRefStablePtr ptr >>= f
+withStablePtr :: StablePtr a -> (a -> IO b) -> IO b
+withStablePtr = flip withStablePtr'
 
-withStablePtr' :: StablePtr a -> (a -> IO b) -> IO b
-withStablePtr' = flip withStablePtr
+withStablePtr' :: (a -> IO b) -> StablePtr a  -> IO b
+withStablePtr' f ptr = deRefStablePtr ptr >>= f
