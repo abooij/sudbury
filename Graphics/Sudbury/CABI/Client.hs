@@ -29,6 +29,7 @@ import Foreign.Storable
 import System.Posix.Types (Fd(..))
 import Network.Socket (fdSocket)
 import Data.Attoparsec.ByteString
+import System.IO.Unsafe
 
 import Graphics.Sudbury.Argument
 import Graphics.Sudbury.Socket
@@ -36,6 +37,7 @@ import Graphics.Sudbury.Socket.Wayland
 import Graphics.Sudbury.WirePackages
 import Graphics.Sudbury.WireMessages
 import Graphics.Sudbury.Message
+import Graphics.Sudbury.Lifetime
 
 import Graphics.Sudbury.CABI.DispatchFFI
 import Graphics.Sudbury.CABI.Common
@@ -55,15 +57,13 @@ TODO
 
 
 type EventQueue = (MessageQueue , FdQueue)
-type ObjectMap = IM.IntMap (StablePtr Proxy)
 
 data Callback = HaskCall HaskDispatcher
               | FFICalls Listener
               | DispCall CDispatcher
 
 data Proxy = Proxy
-  { proxyParent :: Maybe Proxy
-  , proxyDisplayData :: DisplayData
+  { proxyDisplayData :: DisplayData
   , proxyDisplay :: Proxy
   , proxyQueue :: TVar (StablePtr EventQueue)
   , proxyListener :: TVar (Maybe Callback)  -- ^ listener/implementation or dispatcher (with data)
@@ -77,15 +77,20 @@ data Proxy = Proxy
 
 data DisplayData = DisplayData
   { displayInFd :: TMVar Fd
+    -- ^ fd to read from
   , displayOutFd :: TMVar Fd
+    -- ^ fd to write to
   , displayErr :: TVar (Maybe (Int32, Maybe (Word32 , Ptr WL_interface , Word32)))
     -- ^ last_error, code, interface, id
-  , displayDefaultQueue :: StablePtr EventQueue -- display_queue should be the proxy's queue
-  , displayOutQueue :: MessageQueue -- messages to write to the fd
-  , displayFdQueue :: FdQueue -- fd's to be copied to the Other Side (tm)
-  , displayLastId :: TVar Word32
-  , displayFreeIds :: TVar [Word32]
-  , displayObjects :: TVar ObjectMap
+  , displayDefaultQueue :: StablePtr EventQueue
+    -- ^ display_queue should be the proxy's queue
+  , displayOutQueue :: MessageQueue
+    -- ^ messages to write to the fd
+  , displayFdQueue :: FdQueue
+    -- ^ fd's to be copied to the Other Side (tm)
+  , displayLifetime :: Lifetime (StablePtr Proxy)
+    -- ^ object lifetime tracker
+
   -- mutex?
   -- reader_cond?
   -- read_serial?
@@ -240,8 +245,7 @@ proxy_create factory pid interface version = do
   dataVar <- newTVarIO nullPtr
 
   newStablePtr $ Proxy
-    { proxyParent = Just factVal
-    , proxyDisplay = proxyDisplay factVal
+    { proxyDisplay = proxyDisplay factVal
     , proxyDisplayData = proxyDisplayData factVal
     , proxyQueue = queueVar
     , proxyListener = listenerVar
@@ -312,11 +316,10 @@ proxy_marshal_array_constructor_versioned factory opcode args interface version 
   factVal <- deRefStablePtr factory
   let dd = proxyDisplayData factVal
   -- FIXME STM the following
-  pid <- atomically $ generateId (displayLastId dd) (displayFreeIds dd)
-  proxy <- proxy_create factory pid interface (fromIntegral version) -- TODO execute in STM rather than IO
-  -- TODO should the following be strict?
-  -- TODO the following fromIntegral should not be necessary
-  atomically $ modifyTVar (displayObjects dd) (IM.insert (fromIntegral pid) proxy)
+  pid <- atomically $ allocId (displayLifetime dd)
+  proxy <- proxy_create factory pid interface (fromIntegral version)
+  -- TODO execute in STM rather than IO
+  atomically $ localCreate (displayLifetime dd) pid proxy
   iface <- peek (proxyInterface factVal)
   msg <- peekElemOff (ifaceMethods iface) (fromIntegral opcode)
   argTypes <- signatureToTypes (msgSignature msg)
@@ -356,11 +359,12 @@ proxy_destroy :: StablePtr Proxy -> IO ()
 proxy_destroy proxyPtr = do
   proxy <- deRefStablePtr proxyPtr
   let dd = proxyDisplayData proxy
-      om = displayObjects dd
   -- Here, libwayland differentiates between client-side and server-side objects
   -- and acts differently according to that. We need to figure out the purpose of that.
-  atomically $ modifyTVar om (IM.delete (fromIntegral (proxyId proxy)))
+  print $ "Destroying proxy " ++ show (proxyId proxy)
+  atomically $ localDestroy (displayLifetime dd) (proxyId proxy)
   freeStablePtr proxyPtr
+  -- TODO free id? or should that be done in the delete_id handler?
 
 foreign export ccall "wl_proxy_destroy" proxy_destroy
   :: StablePtr Proxy -> IO ()
@@ -534,12 +538,9 @@ display_connect cstr = do
   default_queue <- newEventQueueIO >>= newStablePtr
   out_queue <- newTQueueIO
   fd_queue <- newTQueueIO
-  last_id <- newTVarIO 1
-  id_stack <- newTVarIO []
   in_fd_var <- newTMVarIO fd
   out_fd_var <- newTMVarIO fd
-  object_map <- newTVarIO IM.empty
-
+  lifetime <- initLifetimeIO
 
   let dd = DisplayData
         { displayInFd = in_fd_var
@@ -548,17 +549,14 @@ display_connect cstr = do
         , displayDefaultQueue = default_queue
         , displayOutQueue = out_queue
         , displayFdQueue = fd_queue
-        , displayLastId = last_id
-        , displayFreeIds = id_stack
-        , displayObjects = object_map
+        , displayLifetime = lifetime
         }
 
   queue <- newTVarIO default_queue
   listener <- newTVarIO Nothing
   udata <- newTVarIO nullPtr
   let proxy = Proxy
-        { proxyParent = Nothing
-        , proxyDisplayData = dd
+        { proxyDisplayData = dd
         , proxyDisplay = proxy
         , proxyQueue = queue
         , proxyListener = listener
@@ -569,7 +567,7 @@ display_connect cstr = do
         }
 
   ptr <- newStablePtr proxy
-  atomically $ modifyTVar object_map (IM.insert 1 ptr)
+  atomically $ localCreate lifetime 1 ptr
   return ptr
 
 foreign export ccall "wl_display_connect" display_connect
@@ -634,8 +632,8 @@ wl_display_dispatch_queue_pending(struct wl_display *display,
 -}
 
 {-
-a -> (b -> c) -> c
-[a] -> ([b] -> c) -> c
+given: a -> (b -> c) -> c
+want: [a] -> ([b] -> c) -> c
 [] f = f []
 (x:xs) f = with x $ \x' -> rec xs (\l -> f (x':l))
 -}
@@ -647,26 +645,33 @@ makeHandler h f (x:xs) = h (\x' -> makeHandler h (\l -> f (x':l)) xs) x
 display_dispatch_queue_pending' :: Proxy -> EventQueue -> IO CInt
 display_dispatch_queue_pending' proxy (events , fds) = do
   let dd = proxyDisplayData proxy
-  objectMap <- readTVarIO (displayObjects dd)
-  let om pid = objectMap IM.! (fromIntegral pid)
-      om' pid = castStablePtrToPtr (om pid)
   event <- atomically $ tryReadTQueue events
   case event of
     Nothing -> return 0
     Just msg -> do
       let sender = wireMessageSender msg
           opcode = wireMessageOpcode msg
-          senderobj = om sender
-      senderval <- deRefStablePtr senderobj
-      listener <- readTVarIO (proxyListener senderval)
-      case listener of
-        Nothing -> return ()
-        Just (HaskCall dp) -> error "HaskCall not implemented"
-        Just (FFICalls li) -> do
-          imp <- peekElemOff li (fromIntegral opcode)
-          udata <- readTVarIO (proxyUserData senderval)
-          makeHandler (handleWireCArg om' fds) (\cargs -> invokeFFI imp udata (castStablePtrToPtr senderobj) cargs) (wireMessageArguments msg)
-        Just (DispCall cd) -> error "DispCall not implemented"
+      withLocalObjectIO (displayLifetime dd) sender $ \senderobj -> do
+        senderval <- deRefStablePtr senderobj
+        listener <- readTVarIO (proxyListener senderval)
+        case listener of
+          Nothing -> return ()
+          Just (HaskCall _) -> error "HaskCall not implemented"
+          Just (FFICalls li) -> do
+            imp <- peekElemOff li (fromIntegral opcode)
+            udata <- readTVarIO (proxyUserData senderval)
+            makeHandler
+              (handleWireCArg
+                -- TODO hack
+                (\pid -> unsafePerformIO $ do
+                    maybePtr <- withLocalObjectIO (displayLifetime dd) pid (return . castStablePtrToPtr)
+                    return $ fromMaybe nullPtr maybePtr
+                )
+                fds
+              )
+              (\cargs -> invokeFFI imp udata (castStablePtrToPtr senderobj) cargs)
+              (wireMessageArguments msg)
+          Just (DispCall _) -> error "DispCall not implemented"
       display_dispatch_queue_pending' proxy (events , fds)
 
 display_dispatch_queue_pending :: StablePtr Proxy -> StablePtr EventQueue -> IO CInt
@@ -842,40 +847,37 @@ arg_pipe_fd :: FdQueue -> FdQueue -> SArgumentType t -> STM ()
 arg_pipe_fd popQueue pushQueue SFdWAT = readTQueue popQueue >>= writeTQueue pushQueue
 arg_pipe_fd _ _ _ = return ()
 
-queue_package :: ObjectMap -> FdQueue -> WirePackage -> IO ()
-queue_package om fd_queue pkg = do
+queue_package :: DisplayData -> FdQueue -> WirePackage -> IO (Maybe ())
+queue_package dd fd_queue pkg =
   let sender = wirePackageSender pkg
       opcode = wirePackageOpcode pkg
-      proxy' = IM.lookup (fromIntegral sender) om
-  case proxy' of
-    Nothing -> return ()
-    Just proxyPtr -> do
-      proxy <- deRefStablePtr proxyPtr
-      (events , fds) <- (readTVarIO $ proxyQueue proxy) >>= deRefStablePtr
-      iface <- peek (proxyInterface proxy)
-      wlmsg <- peekElemOff (ifaceEvents iface) (fromIntegral opcode)
-      let signature = msgSignature wlmsg
-      types <- signatureToTypes signature
-      let res = parseOnly (payloadFromTypes sender opcode types) (wirePackagePayload pkg)
-      msg <- case res of
-        Left err -> do
-          error ("Message parse failed: " ++ err)
-        Right x -> return x
-      let dd = proxyDisplayData proxy
-          om = displayObjects dd
-          version = proxyVersion proxy
-          storeNewId :: Ptr (Ptr WL_interface) -> Int -> WireArgBox -> IO Int
-          storeNewId ptr idx (WireArgBox SNewIdWAT n) = do
-            iface <- peekElemOff ptr idx
-            newProxy <- proxy_create proxyPtr n iface version
-            atomically $ modifyTVar om (IM.insert (fromIntegral n) newProxy)
-            return $ idx + 1
-          storeNewId _ idx (WireArgBox _ _) = return idx
-      foldM_ (storeNewId (msgInterfaces wlmsg)) 0 (wireMessageArguments msg)
-      atomically $ do
-        -- Store this package in the right queue, and give that queue the right number of Fds
-        writeTQueue events msg
-        mapM_ (\(ArgTypeBox x) -> arg_pipe_fd fd_queue fds x) types
+  in
+  withLocalObjectIO (displayLifetime dd) sender $ \proxyPtr -> do
+    proxy <- deRefStablePtr proxyPtr
+    (events , fds) <- (readTVarIO $ proxyQueue proxy) >>= deRefStablePtr
+    iface <- peek (proxyInterface proxy)
+    wlmsg <- peekElemOff (ifaceEvents iface) (fromIntegral opcode)
+    let signature = msgSignature wlmsg
+    types <- signatureToTypes signature
+    let res = parseOnly (payloadFromTypes sender opcode types) (wirePackagePayload pkg)
+    msg <- case res of
+      Left err -> do
+        error ("Message parse failed: " ++ err)
+      Right x -> return x
+    let dd = proxyDisplayData proxy
+        version = proxyVersion proxy -- by default, proxies get the version of their parent
+        storeNewId :: Ptr (Ptr WL_interface) -> Int -> WireArgBox -> IO Int
+        storeNewId ptr idx (WireArgBox SNewIdWAT n) = do
+          iface <- peekElemOff ptr idx
+          newProxy <- proxy_create proxyPtr n iface version
+          atomically $ foreignCreate (displayLifetime dd) n newProxy
+          return $ idx + 1
+        storeNewId _ idx (WireArgBox _ _) = return idx
+    foldM_ (storeNewId (msgInterfaces wlmsg)) 0 (wireMessageArguments msg)
+    atomically $ do
+      -- Store this package in the right queue, and give that queue the right number of Fds
+      writeTQueue events msg
+      mapM_ (\(ArgTypeBox x) -> arg_pipe_fd fd_queue fds x) types
 
 pop_fd :: WireMessage -> FdQueue-> STM Message
 pop_fd msg queue = do
@@ -894,7 +896,7 @@ pop_fd msg queue = do
       read_message_arg SObjectWAT o = return o
       read_message_arg SNewIdWAT n = return n
       read_message_arg SArrayWAT a = return a
-      read_message_arg SFdWAT fd = readTQueue queue
+      read_message_arg SFdWAT _ = readTQueue queue
 
 -- | implement wayland's locking scheme for fd reading, and read from the fd
 display_read_events :: StablePtr Proxy -> IO CInt
@@ -925,8 +927,7 @@ display_read_events proxyPtr = do
           Left err -> do
             error ("Package parse failed: " ++ err)
           Right x -> return x
-      om <- readTVarIO (displayObjects dd)
-      mapM_ (queue_package om fd_queue) pkgs
+      mapM_ (queue_package dd fd_queue) pkgs
 
       atomically $ putTMVar (displayInFd dd) fd
       return 0

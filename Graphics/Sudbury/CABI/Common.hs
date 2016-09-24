@@ -79,22 +79,6 @@ charToArgType c =
 signatureToTypes :: CString -> IO [ArgTypeBox]
 signatureToTypes sig = map charToArgType . filter isAlpha . map castCCharToChar <$> peekArray0 0 sig
 
-
-generateId :: TVar Word32 -> TVar [Word32] -> STM Word32
-generateId lastId avail = do
-  free <- readTVar avail
-  case free of
-    (x:xs) -> do
-      writeTVar avail xs
-      return x
-    [] -> do
-      n <- readTVar lastId
-      writeTVar lastId (n+1)
-      return (n+1)
-
-returnId :: Word32 -> TVar [Word32] -> STM ()
-returnId pid avail = modifyTVar avail (pid:)
-
 -- | See `convert_arguments_to_ffi` in connection.c in libwayland
 type family CArgument (t :: ArgumentType) where
   CArgument 'IntWAT = CInt
