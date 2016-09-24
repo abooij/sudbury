@@ -33,6 +33,7 @@ library
     , Graphics.Sudbury.Object
     , Graphics.Sudbury.State
     , Graphics.Sudbury.Message
+    , Graphics.Sudbury.Lifetime
   -- other-modules:
   -- other-extensions:
   build-depends:
@@ -105,7 +106,7 @@ executable libwayland-client.so.0
 
 test-suite tests
    hs-source-dirs: tests
-   main-is: tests/Main.hs
+   main-is: Main.hs
    other-modules:
       Wire
     , Arbitrary
