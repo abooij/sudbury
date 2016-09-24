@@ -21,20 +21,22 @@ import System.Posix.Types
 import Graphics.Sudbury.Internal
 import Graphics.Sudbury.Argument
 
-type family UnboxedArgument (t :: ArgumentType) where
-  UnboxedArgument 'IntWAT = Int32
-  UnboxedArgument 'UIntWAT = Word32
-  UnboxedArgument 'FixedWAT = Fixed23_8
-  UnboxedArgument 'StringWAT = B.ByteString
-  UnboxedArgument 'ObjectWAT = Word32
-  UnboxedArgument 'NewIdWAT = Word32
-  UnboxedArgument 'ArrayWAT = B.ByteString
-  UnboxedArgument 'FdWAT = Fd
+-- | This argument type captures all data in an argument: so compared
+-- to WireArgument, it includes the fd.
+type family FullArgument (t :: ArgumentType) where
+  FullArgument 'IntWAT = Int32
+  FullArgument 'UIntWAT = Word32
+  FullArgument 'FixedWAT = Fixed23_8
+  FullArgument 'StringWAT = B.ByteString
+  FullArgument 'ObjectWAT = Word32
+  FullArgument 'NewIdWAT = Word32
+  FullArgument 'ArrayWAT = B.ByteString
+  FullArgument 'FdWAT = Fd
 
-data ArgBox = forall t. ArgBox (SArgumentType t) (UnboxedArgument t)
+data FullArgBox = forall t. FullArgBox (SArgumentType t) (FullArgument t)
 
 data Message = Message
   { messageSender :: Word32
   , messageOpcode :: Word16
-  , messageArguments :: [ArgBox]
+  , messageArguments :: [FullArgBox]
   }

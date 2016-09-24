@@ -129,7 +129,7 @@ serializeQueue1 queue bs = do
   msg <- tryReadTQueue queue
   case msg of
     Nothing -> return bs
-    Just x -> serializeQueue1 queue (bs <> (wirePack $ messageToPackage x))
+    Just x -> serializeQueue1 queue (bs <> wirePack (messageToPackage x))
 
 
 serializeQueue :: MessageQueue -> STM B.ByteString
