@@ -17,7 +17,20 @@ We intend to place unsafe code in self-contained modules, separated from the Has
 
 Building and running
 ---
-The package should be buildable using cabal or stack.
+The package should be buildable using [cabal](https://github.com/haskell/cabal) (which is available as a package in many Linux repositories) or [stack](http://haskellstack.org/) (which is a newer project aimed at avoiding common Haskell installation pitfalls). (If you don't know which build tool to pick, give stack a try, as it should give reproducible builds.)
+
+To build with cabal, clone the repository and run
+```
+$ cabal sandbox init
+$ cabal install
+```
+(It is installed locally in a subdirectory of the repository.)
+
+To build with stack, (first setup stack) clone the repository and run
+```
+$ stack build
+```
+(The binary is again placed in a subdirectory.)
 
 Note that the `libwayland-client.so.0` shared library will __not__ be installed in the correct location.
 This is because the build suite, cabal, believes we are compiling this library as an executable.
@@ -53,3 +66,18 @@ As of commit 24e5b89, all weston demo clients run correctly (but please report a
 The Haskell API is still rather limited (see issue #2 for progress), and the server side ABI has not yet been written (see issue #3 for progress).
 
 This all means that you should be able to use sudbury as a drop-in replacement for wayland clients, but not yet for wayland compositors. And while some code is in place to be able to write wayland programs in Haskell, much more functionality is planned.
+
+Contributing
+---
+Most things that require attention should be documented somewhere: either in this readme file, or as an issue on github.
+
+Any feedback on your experience using this library is welcome. Usage here encompasses:
+- simply building the library on system X with build system Y
+- running a wayland client using the instructions above: 
+  - are you able to make it use the sudbury implementation? 
+  - does the client connect?
+  - does the client function as it does with libwayland?
+  
+For contributing code:
+- work on any of the outstanding issues.
+- use sudbury to write tools to e.g. query wayland compositors, or to debug wayland connections. can we rewrite existing [debug tools](https://wayland.freedesktop.org/extras.html) into haskell, using fewer lines of code?
