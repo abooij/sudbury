@@ -271,7 +271,7 @@ See the commit message for details.
 In essence, it's a way to specify the queue a to-be-constructed proxy should get, before actually constructing it.
 This intends to avoid race conditions.
 A wrapper proxy is like a shadow proxy: it has the same properties as the real proxy, except you can modify its queue independently.
-Any new proxy constructed from the wrapper proxy then inherit this alternative queue in a thread-safe way.
+Any new proxy constructed from the wrapper proxy then inherits this alternative queue in a thread-safe way.
 
 Sample code in C:
 
