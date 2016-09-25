@@ -263,6 +263,39 @@ proxy_create factoryP pid interface version = withStablePtr factoryP $ \factory 
     , proxyVersion = version
     }
 
+
+{-
+The following two methods have been added by libwayland commit 6d29c0da.
+See the commit message for details.
+
+In essence, it's a way to specify the queue a to-be-constructed proxy should get, before actually constructing it.
+This intends to avoid race conditions.
+A wrapper proxy is like a shadow proxy: it has the same properties as the real proxy, except you can modify its queue independently.
+Any newly constructed from the wrapper proxy then inherit this alternative queue in a thread-safe way.
+
+Sample code in C:
+
+struct wl_event_queue *queue = ...;
+struct wl_display *wrapped_display;
+struct wl_callback *callback;
+
+wrapped_display = wl_proxy_create_wrapper(display);
+wl_proxy_set_queue((struct wl_proxy *) wrapped_display, queue);
+callback = wl_display_sync(wrapped_display);
+wl_proxy_wrapper_destroy(wrapped_display);
+wl_callback_add_listener(callback, ...);
+-}
+
+{-
+void *
+wl_proxy_create_wrapper(void *proxy);
+-}
+
+{-
+void
+wl_proxy_wrapper_destroy(void *proxy_wrapper);
+-}
+
 {-
 -- cbits to _array_constructor
 struct wl_proxy *
@@ -887,6 +920,8 @@ pop_fd msg queue = do
 display_read_events :: StablePtr Proxy -> IO CInt
 display_read_events proxyP = withStablePtr proxyP $ \proxy -> do
   let dd = proxyDisplayData proxy
+
+  -- Only read events if there are no pending errors
   out <- atomically $ do
     err <- readTVar $ displayErr dd
     case err of
@@ -895,11 +930,15 @@ display_read_events proxyP = withStablePtr proxyP $ \proxy -> do
         -- FIXME this locking is too restrictive: might result in deadlock
         fd <- tryTakeTMVar (displayInFd dd)
         return $ Right fd
+
+  -- See if we obtained the fd and read from it.
   case out of
     Left errNo -> do
+      -- pending error
       set_errno (Errno $ fromIntegral errNo)
       return (-1)
     Right (Just fd) -> do
+      -- we obtained the fd!
       (bytes , fds) <- recvFromWayland fd
 
       fd_queue <- newTQueueIO
@@ -916,9 +955,8 @@ display_read_events proxyP = withStablePtr proxyP $ \proxy -> do
       atomically $ putTMVar (displayInFd dd) fd
       return 0
     Right Nothing -> do
-      -- wait until the fd is returned (ie our queue is populated)
-      -- FIXME this is a sequential thread synchronization.
-      -- libwayland does this better (using pthread_cond_wait)
+      -- wait until the fd is returned (ie our queue is populated),
+      -- and report back to whatever called us
       _ <- atomically $ readTMVar (displayInFd dd)
       err <- atomically $ readTVar $ displayErr dd
       -- i'm not sure why we're setting errno multiple times, but this is what libwayland does
