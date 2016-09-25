@@ -20,12 +20,12 @@ Building and running
 The package should be buildable using cabal or stack.
 
 Note that the `libwayland-client.so.0` shared library will __not__ be installed in the correct location.
-This is because we are, technically speaking, compiling this library as an executable.
-This is because of limitations of the cabal build system.
+This is because the build suite, cabal, believes we are compiling this library as an executable.
+There are developments to allow building platform libraries (as we are doing) without too many hacks.
 
-If you built the project with stack, you can use it as follows:
+If you built the project with stack (which internally uses parts of cabal), you can use it as follows:
 ```
-$ LD_LIBRARY_PATH=.stack-work/install/x86_64-linux/lts-5.11/7.10.3/bin weston-flower
+$ LD_LIBRARY_PATH=.stack-work/install/x86_64-linux/lts-7.0/8.0.1/bin weston-flower
 ```
 
 If you built the project with cabal, you can use it as follows:
@@ -35,8 +35,21 @@ $ LD_LIBRARY_PATH=.:dist/build weston-flower
 
 > Portability: The wayland protocol works via unix domain sockets that support passing file descriptors. That means that even if this builds on non-Linux systems, it will likely not work.
 
-Status (April 2016)
+(Planned) features
+---
+- Implement the libwayland ABI to support running existing wayland applications without modification.
+  - client-side (mostly done)
+  - server-side (not started yet)
+- Write a flexible Haskell API.
+  - We can use inspiration from the implementation of the ABI to see which components should be exposed and how.
+  - The wayland objects all have a corresponding "interface" which is much like a type. Hence, we should use some fancy Haskell features to make the API more strongly typed than libwayland's.
+- Organise the code so that we can do extensive testing and benchmarking.
+  - Because of the functional coding style, we will be able to test many more aspects of our code than libwayland.
+
+Status (September 2016)
 ---
 So far, the main focus is implementing a C ABI for the client side.
-As of commit ea66bb7, most weston demo clients run correctly (see issue #5 for progress).
+As of commit 24e5b89, all weston demo clients run correctly (but please report any clients that work with libwayland but not with sudbury).
 The Haskell API is still rather limited (see issue #2 for progress), and the server side ABI has not yet been written (see issue #3 for progress).
+
+This all means that you should be able to use sudbury as a drop-in replacement for wayland clients, but not yet for wayland compositors. And while some code is in place to be able to write wayland programs in Haskell, much more functionality is planned.
