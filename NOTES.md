@@ -16,6 +16,7 @@ A message is always bound to a wayland "object". The identifying data of an obje
 Other documentation:
 
 - [Official wayland docs](http://wayland.freedesktop.org/docs/html/)
+- [The Real Story Behind Wayland and X (presentation)](https://www.youtube.com/watch?v=RIctzAQOe44)
 - [Pekka Paalanen's object lifespan blog post](http://ppaalanen.blogspot.com/2014/07/wayland-protocol-design-object-lifespan.html)
 
 Terminology
