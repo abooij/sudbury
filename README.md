@@ -78,6 +78,6 @@ Any feedback on your experience using this library is welcome. Usage here encomp
   - does the client connect?
   - does the client function as it does with libwayland?
   
-For contributing code:
+For contributing code, you will probably want to get a bit more familiar with wayland. Some notes on understanding wayland are in NOTES.md. To work on:
 - work on any of the outstanding issues.
-- use sudbury to write tools to e.g. query wayland compositors, or to debug wayland connections. can we rewrite existing [debug tools](https://wayland.freedesktop.org/extras.html) into haskell, using fewer lines of code?
+- use sudbury to write tools to e.g. query wayland compositors, or to debug wayland connections. can we rewrite existing [debug tools](https://wayland.freedesktop.org/extras.html) into haskell, using fewer lines of code? can we rewrite the weston client demos?
