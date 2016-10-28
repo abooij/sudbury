@@ -64,6 +64,62 @@ library
     , ExistentialQuantification
   ghc-options: -Wall -fwarn-incomplete-record-updates -fwarn-unused-do-bind
 
+foreign-library wayland-client
+  type: native-shared
+  other-modules:
+      Graphics.Sudbury.CABI.Client
+    , Graphics.Sudbury.CABI.Common
+    , Graphics.Sudbury.CABI.Structs
+    , Graphics.Sudbury.CABI.DispatchFFI
+    , Graphics.Sudbury.Protocol.XML
+    , Graphics.Sudbury.Protocol.Types
+    , Graphics.Sudbury.Socket
+    , Graphics.Sudbury.Socket.Wayland
+    , Graphics.Sudbury.WirePackages
+    , Graphics.Sudbury.WireMessages
+    , Graphics.Sudbury.Argument
+    , Graphics.Sudbury.Internal
+    , Graphics.Sudbury.Object
+    , Graphics.Sudbury.State
+    , Graphics.Sudbury.Message
+    , Graphics.Sudbury.Lifetime
+  hs-source-dirs: .
+  build-depends:
+      -- Version bounds are already in the library section above
+
+      base ==4.*
+    , xml >=1.3 && <1.4
+    , process >= 1.2 && <1.5
+    , unix >=2.5 && <2.8
+    , filepath >=1.2 && <1.5
+    , network >=2.5 && <2.7
+    , bytestring >=0.9 && <1
+    , attoparsec >=0.13 && <1
+    , attoparsec-binary >=0.2 && <1
+    , cpu >=0.1 && <1
+    , singletons >=2 && <3
+    , template-haskell >=2.11 && <3
+    , containers >=0.5 && <1
+    , mtl >=2.2 && <3
+    , libffi <0.2
+    , stm >=2.4 && <2.6
+--    , sudbury
+  default-extensions:
+      GADTs
+    , DataKinds
+    , TypeFamilies
+    , ExistentialQuantification
+  c-sources:
+      cbits/wayland-msg-handling.c
+    , cbits/wayland-protocol.c
+    , cbits/init.c
+    , cbits/wayland-client.c
+    , cbits/wayland-os.c
+    , cbits/wayland-util.c
+  include-dirs: cbits/
+  default-language: Haskell2010
+  ghc-options: -Wall -fwarn-incomplete-record-updates -fwarn-unused-do-bind
+
 executable libwayland-client.so.0
   hs-source-dirs: .
   main-is: Main.hs

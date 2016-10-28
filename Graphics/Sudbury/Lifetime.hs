@@ -70,6 +70,8 @@ foreignCreate l i o = do
 localCreate :: Lifetime a -> Id -> a -> STM ()
 localCreate = foreignCreate
 
+
+-- TODO in these two methods, we need to dealloc an Id if appropriate.
 -- | The foreign side destroyed an object
 foreignDestroy :: Lifetime a -> Id -> STM ()
 foreignDestroy l i =
