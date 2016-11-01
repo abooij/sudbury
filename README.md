@@ -74,3 +74,10 @@ Any feedback on your experience using this library is welcome. Usage here encomp
 For contributing code, you will probably want to get a bit more familiar with wayland. Some notes on understanding wayland are in NOTES.md. To work on:
 - work on any of the outstanding issues.
 - use sudbury to write tools to e.g. query wayland compositors, or to debug wayland connections. can we rewrite existing [debug tools](https://wayland.freedesktop.org/extras.html) into haskell, using fewer lines of code? can we rewrite the weston client demos?
+
+Related projects
+---
+- [hayland](https://github.com/abooij/haskell-wayland): haskell bindings to libwayland (deprecated)
+- [wayland-wire](https://github.com/sivertb/wayland-wire): alternative haskell implementation of the wayland protocol
+- [wayland-tracker](https://github.com/01org/wayland-tracker/): haskell utility for tracking what happens between a wayland client and a wayland compositor
+- [haskell-wlc](https://github.com/dlahoti/haskell-wlc): haskell bindings to a [wayland compositor library](https://github.com/Cloudef/wlc)
