@@ -17,7 +17,8 @@ We intend to place unsafe code in self-contained modules, separated from the Has
 
 Building and running
 ---
-The package should be buildable using [cabal](https://github.com/haskell/cabal) (which is available as a package in many Linux repositories) or [stack](http://haskellstack.org/) (which is a newer project aimed at avoiding common Haskell installation pitfalls). (If you don't know which build tool to pick, give stack a try, as it should give reproducible builds.)
+The package should be buildable using a development version (i.e. >=1.25) of [cabal](https://github.com/haskell/cabal).
+At the moment, it is not buildable using [stack](http://haskellstack.org/).
 
 To build with cabal, clone the repository and run
 ```
@@ -26,24 +27,16 @@ $ cabal install
 ```
 (It is installed locally in a subdirectory of the repository.)
 
-To build with stack, (first setup stack) clone the repository and run
+If you built the project with cabal, you can _almost_ use it directly.
+The only problem is that cabal compiled the library as `libwayland-client.so`, whereas wayland clients are linked against `libwayland-client.so.0`.
+So we first create a symlink:
 ```
-$ stack build
+$ ln -s libwayland-client.so .cabal-sandbox/lib/libwayland-client.so.0
 ```
-(The binary is again placed in a subdirectory.)
-
-Note that the `libwayland-client.so.0` shared library will __not__ be installed in the correct location.
-This is because the build suite, cabal, believes we are compiling this library as an executable.
-There are developments to allow building platform libraries (as we are doing) without too many hacks.
-
-If you built the project with stack (which internally uses parts of cabal), you can use it as follows:
+And now we can use cabal to run arbitrary weston clients.
 ```
-$ LD_LIBRARY_PATH=.stack-work/install/x86_64-linux/lts-7.0/8.0.1/bin weston-flower
-```
-
-If you built the project with cabal, you can use it as follows:
-```
-$ LD_LIBRARY_PATH=.:dist/build weston-flower
+$ cabal exec weston-flower
+$ cabal exec weston-dnd
 ```
 
 > Portability: The wayland protocol works via unix domain sockets that support passing file descriptors. That means that even if this builds on non-Linux systems, it will likely not work.
@@ -73,11 +66,11 @@ Most things that require attention should be documented somewhere: either in thi
 
 Any feedback on your experience using this library is welcome. Usage here encompasses:
 - simply building the library on system X with build system Y
-- running a wayland client using the instructions above: 
-  - are you able to make it use the sudbury implementation? 
+- running a wayland client using the instructions above:
+  - are you able to make it use the sudbury implementation?
   - does the client connect?
   - does the client function as it does with libwayland?
-  
+
 For contributing code, you will probably want to get a bit more familiar with wayland. Some notes on understanding wayland are in NOTES.md. To work on:
 - work on any of the outstanding issues.
 - use sudbury to write tools to e.g. query wayland compositors, or to debug wayland connections. can we rewrite existing [debug tools](https://wayland.freedesktop.org/extras.html) into haskell, using fewer lines of code? can we rewrite the weston client demos?
