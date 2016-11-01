@@ -12,7 +12,23 @@ to exist.
 In this module, we use the term "local" and "foreign" to distinguish
 client and server without specifying which is which.
 -}
-module Graphics.Sudbury.Lifetime where
+{-# LANGUAGE LambdaCase #-}
+module Graphics.Sudbury.Lifetime
+  ( ObjectMap
+  , Id
+  , Lifetime
+
+  , initLifetimeIO
+  , allocId
+  , foreignCreate
+  , foreignDestroy
+  , localCreate
+  , localDestroy
+  , withForeignObject
+  , withLocalObject
+  , withLocalObjectIO
+  , withMutualObject
+  ) where
 
 import Data.Word
 import qualified Data.IntMap as IM
@@ -71,16 +87,29 @@ localCreate :: Lifetime a -> Id -> a -> STM ()
 localCreate = foreignCreate
 
 
--- TODO in these two methods, we need to dealloc an Id if appropriate.
 -- | The foreign side destroyed an object
 foreignDestroy :: Lifetime a -> Id -> STM ()
 foreignDestroy l i =
-  modifyTVar (lifetimeForeign l) (IM.delete (fromIntegral i))
+  IM.member (fromIntegral i) <$> readTVar (lifetimeForeign l) >>= \case
+    False -> return () -- Id was already destroyed
+    True  -> do
+      modifyTVar (lifetimeForeign l) (IM.delete (fromIntegral i))
+      -- If the Id was also destroyed locally, we can start using it again
+      IM.member (fromIntegral i) <$> readTVar (lifetimeLocal l) >>= \case
+        False -> deallocId l i
+        True  -> return () -- still alive locally; don't free Id
 
 -- | The foreign side destroyed an object
 localDestroy :: Lifetime a -> Id -> STM ()
 localDestroy l i =
-  modifyTVar (lifetimeLocal   l) (IM.delete (fromIntegral i))
+  IM.member (fromIntegral i) <$> readTVar (lifetimeLocal l) >>= \case
+    False -> return () -- Id was already destroyed
+    True  -> do
+      modifyTVar (lifetimeLocal l) (IM.delete (fromIntegral i))
+      -- If the Id was also destroyed foreignly, we can start using it again
+      IM.member (fromIntegral i) <$> readTVar (lifetimeForeign l) >>= \case
+        False -> deallocId l i
+        True  -> return () -- still alive foreignly; don't free Id
 
 -- | Do something with an object that is the foreign party believes to
 -- be alive, given its Id
