@@ -65,6 +65,7 @@ library
   ghc-options: -Wall -fwarn-incomplete-record-updates -fwarn-unused-do-bind
 
 foreign-library wayland-client
+  lib-version-info: 3:0:3
   type: native-shared
   other-modules:
       Graphics.Sudbury.CABI.Client
