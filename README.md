@@ -17,23 +17,17 @@ We intend to place unsafe code in self-contained modules, separated from the Has
 
 Building and running
 ---
-The package should be buildable using a development version (i.e. >=1.25) of [cabal](https://github.com/haskell/cabal).
-At the moment, it is not buildable using [stack](http://haskellstack.org/).
+The package should be buildable using a development version (i.e. >=1.25) of [cabal](https://github.com/haskell/cabal) (development version as of 27 November 2016).
+As the moment, 27 November 2016, it does not seem to be buildable using [stack](http://haskellstack.org/).
 
-To build with cabal, clone the repository and run
+To build with cabal, clone this repository and run
 ```
 $ cabal sandbox init
 $ cabal install
 ```
 (It is installed locally in a subdirectory of the repository.)
 
-If you built the project with cabal, you can _almost_ use it directly.
-The only problem is that cabal compiled the library as `libwayland-client.so`, whereas wayland clients are linked against `libwayland-client.so.0`.
-So we first create a symlink:
-```
-$ ln -s libwayland-client.so .cabal-sandbox/lib/libwayland-client.so.0
-```
-And now we can use cabal to run arbitrary weston clients.
+If you installed the project with cabal, you can use it directly. Fire up your favorite wayland compositor, and use cabal exec to run existing executables with the sudbury implementation of the wayland client library:
 ```
 $ cabal exec weston-flower
 $ cabal exec weston-dnd
