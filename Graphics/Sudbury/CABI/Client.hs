@@ -26,6 +26,7 @@ import Foreign.Storable
 import System.Posix.Types (Fd(..))
 import Network.Socket (fdSocket)
 import Data.Attoparsec.ByteString
+import qualified Data.Store as S
 import System.IO.Unsafe
 
 import Graphics.Sudbury.Argument
@@ -944,11 +945,11 @@ display_read_events proxyP = withStablePtr proxyP $ \proxy -> do
       fd_queue <- newTQueueIO
       atomically $ mapM_ (writeTQueue fd_queue) fds
 
-      let pkgsParse = parseOnly pkgStream bytes
+      let pkgsParse = (S.decode bytes :: Either S.PeekException [WirePackage])
       pkgs <-
         case pkgsParse of
           Left err ->
-            error ("Package parse failed: " ++ err)
+            error ("Package parse failed: " ++ show err)
           Right x -> return x
       mapM_ (queue_package dd fd_queue) pkgs
 

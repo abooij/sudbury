@@ -7,17 +7,15 @@ Maintainer  : auke@tulcod.com
 Stability   : experimental
 Portability : POSIX
 -}
-{-# LANGUAGE Safe #-}
 module Graphics.Sudbury.WirePackages where
 
 import Data.Word
-import Data.Monoid ((<>))
+import Data.Store
+import Data.Store.Core
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Internal as B
 import qualified Data.ByteString.Builder as BB
-import qualified Data.ByteString.Builder.Extra as BBE
-import qualified Data.Attoparsec.ByteString as A
 
-import Graphics.Sudbury.Internal
 
 data WirePackage = WirePackage
   { wirePackageSender  :: Word32
@@ -26,37 +24,33 @@ data WirePackage = WirePackage
   , wirePackagePayload :: B.ByteString
   } deriving (Eq, Show)
 
--- | Construct a wayland wire wirePackage
+-- Storable that writes in the Wayland binary format.
+-- Allows us to use the optimized machinery for Data.Store
+-- to gain faster performing decoding/encoding.
+instance Store WirePackage where
+  size = VarSize $ fromIntegral . wirePackageSize
+  poke p = do
+    poke $ wirePackageSender p
+    poke $ wirePackageOpcode p 
+    poke $ wirePackageSize p
+    let (sourceFp, sourceOffset, sourceLength) = B.toForeignPtr $ wirePackagePayload p
+    pokeFromForeignPtr sourceFp sourceOffset sourceLength
+  peek = do
+    sen <- peek
+    op <- peek
+    sz <- peek
+    let payloadSize = fromIntegral sz - 8
+    plraw <- peekToPlainForeignPtr "Data.ByteString.ByteString" payloadSize
+    let pl = B.PS plraw 0 payloadSize
+    return $ WirePackage 
+      { wirePackageSender=sen
+      , wirePackageSize=sz 
+      , wirePackageOpcode=op 
+      , wirePackagePayload=pl
+      }
+  {-# INLINE size #-}
+  {-# INLINE peek #-}
+  {-# INLINE poke #-}
+
 wirePack :: WirePackage -> BB.Builder
-wirePack msg = wirePackBuilder
-  (wirePackageSender msg)
-  (wirePackageSize msg)
-  (wirePackageOpcode msg)
-  (BB.byteString $ wirePackagePayload msg)
-
--- | Construct a wayland wire wirePackage with payload given as a 'Builder'.
-wirePackBuilder :: Word32 -> Word16 -> Word16 -> BB.Builder -> BB.Builder
-wirePackBuilder sender size opcode payload =
-  BBE.word32Host sender
-  <>
-  -- FIXME make byte order portable here
-  BBE.word16Host opcode
-  <>
-  BBE.word16Host size
-  <>
-  payload
-
-parseWirePackage :: A.Parser WirePackage
-parseWirePackage = do
-  sender <- anyWord32he
-  opcode <- anyWord16he
-  size   <- anyWord16he
-  payload <- A.take (fromIntegral size - 8)
-  return WirePackage { wirePackageSender  = sender
-                 , wirePackageSize    = size
-                 , wirePackageOpcode  = opcode
-                 , wirePackagePayload = payload
-                 }
-
-pkgStream :: A.Parser [WirePackage]
-pkgStream = A.many' parseWirePackage
+wirePack = BB.byteString . encode
