@@ -108,6 +108,22 @@ foreign-library wayland-client
   default-language: Haskell2010
   ghc-options: -Wall -fwarn-incomplete-record-updates -fwarn-unused-do-bind
 
+benchmark serial-bench-bench
+  hs-source-dirs:      bench
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  ghc-options:         -rtsopts -O2
+  build-depends:       base
+                     , sudbury
+                     , criterion
+                     , QuickCheck
+                     , deepseq
+                     , bytestring
+                     , attoparsec
+                     , store
+                     , store-core
+  default-language:    Haskell2010
+
 test-suite tests
    hs-source-dirs: tests
    main-is: Main.hs

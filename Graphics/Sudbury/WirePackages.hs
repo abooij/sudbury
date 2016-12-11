@@ -8,10 +8,12 @@ Stability   : experimental
 Portability : POSIX
 -}
 {-# LANGUAGE Safe #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Graphics.Sudbury.WirePackages where
 
 import Data.Word
 import Data.Monoid ((<>))
+import GHC.Generics
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Builder.Extra as BBE
@@ -24,7 +26,7 @@ data WirePackage = WirePackage
   , wirePackageSize    :: Word16
   , wirePackageOpcode  :: Word16
   , wirePackagePayload :: B.ByteString
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 -- | Construct a wayland wire wirePackage
 wirePack :: WirePackage -> BB.Builder
