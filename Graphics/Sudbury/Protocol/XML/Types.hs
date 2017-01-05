@@ -1,7 +1,7 @@
 {-|
 Module      : Graphics.Sudbury.Protocol.XML.Types
 Description : Defines types for an XML definition of a wayland protocol
-Copyright   : (c) Auke Booij, 2015
+Copyright   : (c) Auke Booij, 2015-2017
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental

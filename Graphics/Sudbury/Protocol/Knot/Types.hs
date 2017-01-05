@@ -1,7 +1,7 @@
 {-|
 Module      : Graphics.Sudbury.Protocol.Knot.Types
 Description : Knotted protocol data: interfaces whose messages' arguments refer to other interfaces
-Copyright   : (c) Auke Booij, 2016
+Copyright   : (c) Auke Booij, 2015-2017
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental

@@ -1,12 +1,11 @@
 {-|
 Module      : Graphics.Sudbury.WireMessages
 Description : Representation of messages parsed from the wayland wire protocol
-Copyright   : (c) Auke Booij, 2015
+Copyright   : (c) Auke Booij, 2015-2017
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 -}
-{-# LANGUAGE Safe #-}
 module Graphics.Sudbury.WireMessages where
 
 import Data.Fixed

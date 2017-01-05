@@ -2,7 +2,7 @@
 Module      : Graphics.Sudbury.Internal
 Description : Internal utilities for parsing ByteStrings into words and ints of
               various sizes
-Copyright   : (c) Auke Booij, 2015
+Copyright   : (c) Auke Booij, 2015-2017
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
@@ -11,7 +11,6 @@ Portability : POSIX
 The parsers in "Data.Attoparsec.Binary" are not quite sufficient for our use
 case: we need to parse words in host endianness, and parse ints.
 -}
-{-# LANGUAGE Safe #-}
 module Graphics.Sudbury.Internal where
 
 import Data.Fixed

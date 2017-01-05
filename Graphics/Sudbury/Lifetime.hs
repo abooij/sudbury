@@ -1,7 +1,7 @@
 {-|
 Module      : Graphics.Sudbury.Lifetime
 Description : Object lifetime tracker
-Copyright   : (c) Auke Booij, 2015
+Copyright   : (c) Auke Booij, 2015-2017
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental

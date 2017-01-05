@@ -1,13 +1,12 @@
 {-|
 Module      : Graphics.Sudbury.WirePackages
 Description : Reads ByteStrings into packages containing individual messages
-Copyright   : (c) Auke Booij, 2015
+Copyright   : (c) Auke Booij, 2015-2017
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 Portability : POSIX
 -}
-{-# LANGUAGE Safe #-}
 module Graphics.Sudbury.WirePackages where
 
 import Data.Word

@@ -1,7 +1,7 @@
 {-|
 Module      : Graphics.Sudbury.Protocol.Knot
 Description : Tie the knot of wayland protocol data
-Copyright   : (c) Auke Booij, 2015
+Copyright   : (c) Auke Booij, 2015-2017
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental

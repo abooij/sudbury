@@ -1,13 +1,12 @@
 {-|
 Module      : Graphics.Sudbury.Protocol.XML
 Description : Parses wayland XML protocol files
-Copyright   : (c) Auke Booij, 2015
+Copyright   : (c) Auke Booij, 2015-2017
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 Portability : POSIX
 -}
-{-# LANGUAGE Safe #-}
 module Graphics.Sudbury.Protocol.XML where
 
 import Data.Maybe (fromMaybe)

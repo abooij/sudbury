@@ -1,12 +1,11 @@
 {-|
 Module      : Graphics.Sudbury.Argument
 Description : Various type tricks to play with wayland arguments as types and values
-Copyright   : (c) Auke Booij, 2015
+Copyright   : (c) Auke Booij, 2015-2017
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 -}
-{-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Graphics.Sudbury.Argument where
 

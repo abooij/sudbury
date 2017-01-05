@@ -1,7 +1,7 @@
 {-|
 Module      : Graphics.Sudbury.Object
 Description : Wayland object handling
-Copyright   : (c) Auke Booij, 2015
+Copyright   : (c) Auke Booij, 2015-2017
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
@@ -9,7 +9,6 @@ Stability   : experimental
 This module can generate Haskell types which will represent Wayland objects,
 and can marshal/demarshal values into/out of them.
 -}
-{-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}

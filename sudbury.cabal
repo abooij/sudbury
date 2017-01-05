@@ -10,7 +10,7 @@ license:             MIT
 license-file:        LICENSE
 author:              Auke Booij
 maintainer:          auke@tulcod.com
--- copyright:
+copyright:           Auke Booij, 2015-2017
 category:            Graphics
 build-type:          Simple
 extra-source-files:  README.md, cbits/wayland-msg-handling.h

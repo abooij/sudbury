@@ -1,13 +1,12 @@
 {-|
 Module      : Graphics.Sudbury.Socket
 Description : Sets up wayland client/server sockets
-Copyright   : (c) Auke Booij, 2015
+Copyright   : (c) Auke Booij, 2015-2017
 License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 Portability : POSIX
 -}
-{-# LANGUAGE Trustworthy #-}
 module Graphics.Sudbury.Socket where
 
 import Data.Maybe (fromMaybe)
