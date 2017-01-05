@@ -15,7 +15,7 @@ import qualified Data.Map as M -- FIXME: Should this be Strict? or an IntMap?
 import Data.List
 
 import Graphics.Sudbury.Internal
-import Graphics.Sudbury.Protocol.Types
+import Graphics.Sudbury.Protocol.Runtime.Types
 import Graphics.Sudbury.WirePackages
 
 {-
@@ -24,8 +24,8 @@ Some fields in this file should probably be strict to avoid memory leaks.
 
 -- placeholders until I figure out what these should be
 type MyObjectType = String
-type MyMessageType = WLMessage
-type ProtocolSet = WLProtocol
+type MyMessageType = Message
+type ProtocolSet = Protocol
 
 {-
 state-related operations:
@@ -35,10 +35,10 @@ state-related operations:
 < id and run-time type
 + read WireMessage and extract new_ids, insert into map
 < typed message
-- find WLMessage corresponding to incoming WirePackage
+- find Message corresponding to incoming WirePackage
 < wirepackage
 < protocol set
-> WLMessage?
+> Message?
   - find interface type corresponding to sender ID (table lookup)
   - find message corresponding to opcode ID (protocol lookup)
 (read state)
@@ -64,7 +64,7 @@ data ConnectionState = ConnectionState
 
 -- What will our analogue to 'wl_global_bind_func_t' be?
 data Global = Global
-  { globalInterface :: WLInterface
+  { globalInterface :: Interface
   , globalType :: MyObjectType
   }
 

@@ -1,5 +1,5 @@
 {-|
-Module      : Graphics.Sudbury.ProtocolXML
+Module      : Graphics.Sudbury.Protocol.XML
 Description : Parses wayland XML protocol files
 Copyright   : (c) Auke Booij, 2015
 License     : MIT
@@ -10,55 +10,25 @@ Portability : POSIX
 {-# LANGUAGE Safe #-}
 module Graphics.Sudbury.Protocol.XML where
 
-import Control.Monad (filterM)
-import Data.List (find)
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (fromMaybe)
 import Text.Read (readMaybe)
 import qualified Text.XML.Light as XML
 import System.Process
 
-import Graphics.Sudbury.Protocol.Types
+import Graphics.Sudbury.Protocol.XML.Types
 import Graphics.Sudbury.Argument
 
 qname :: String -> XML.QName
 qname name = XML.QName name Nothing Nothing
 
--- The following two functions are also needed to circumvent infinite recursion
--- I don't quite like them, because they generate a new `WLInterface`/`WLEnum` for every call.
--- We should be able to reuse the ones from the tree that we are building up anyway,
--- so as to make an honest circular data structure.
-
-getInterface :: XML.Element -> String -> Maybe WLInterface
-getInterface doc name = do
-  let elts = XML.findChildren (qname "interface") doc
-  ifaceElt <- filterM (\elt -> do
-    name' <- XML.findAttr (qname "name") elt
-    return (name == name')
-    ) elts
-  listToMaybe ifaceElt >>= parseInterface doc
-
-getEnum :: XML.Element -> String -> String -> Maybe WLEnum
-getEnum doc iname ename = do
-  let elts = XML.findChildren (qname "interface") doc
-  ifaceElts <- filterM (\elt -> do
-    name' <- XML.findAttr (qname "name") elt
-    return (iname == name')
-    ) elts
-  ifaceElt <- listToMaybe ifaceElts
-  enumElt <- filterM (\elt -> do
-    name' <- XML.findAttr (qname "name") elt
-    return (ename == name')
-    ) (XML.findChildren (qname "enum") ifaceElt)
-  listToMaybe enumElt >>= parseEnum
-
 -- | Parse a wayland XML document
-parseProtocol :: XML.Element -> Maybe WLProtocol
+parseProtocol :: XML.Element -> Maybe Protocol
 parseProtocol doc = do
   docName <- XML.findAttr (qname "name") doc
   description <- parseDescription doc
-  let copyright  = XML.strContent <$> XML.findChild (qname "copyright") doc
-  interfaces <- mapM (parseInterface doc) (XML.findChildren (qname "interface") doc)
-  return WLProtocol
+  let copyright = XML.strContent <$> XML.findChild (qname "copyright") doc
+  interfaces <- mapM parseInterface (XML.findChildren (qname "interface") doc)
+  return Protocol
     { protocolName        = docName
     , protocolDescription = description
     , protocolInterfaces  = interfaces
@@ -68,7 +38,7 @@ parseProtocol doc = do
 -- | Given some XML element, find its `<description>` if it has one.
 --   The double Maybe reflects the fact that an element might not have a description,
 --   and if it does, it might not be valid (since it needs to have a summary).
-parseDescription :: XML.Element -> Maybe (Maybe WLDescription)
+parseDescription :: XML.Element -> Maybe (Maybe Description)
 parseDescription elt = do
   let descElts = XML.findChildren (qname "description") elt
   case descElts of
@@ -81,37 +51,35 @@ parseDescription elt = do
 --
 --   It is given the list of interfaces in this protocol to cross-reference enum attributes.
 --   Note that this circularity is resolved using `mfix` in `parseProtocol`.
-parseInterface :: XML.Element -> XML.Element -> Maybe WLInterface
-parseInterface doc elt = do
+parseInterface :: XML.Element -> Maybe Interface
+parseInterface elt = do
   name <- XML.findAttr (qname "name") elt
   description <- parseDescription elt
   let version  = fromMaybe 0 (XML.findAttr (qname "version") elt >>= readMaybe)
-      since    = fromMaybe 1 (XML.findAttr (qname "since") elt >>= readMaybe)
   enums    <- mapM parseEnum (XML.findChildren (qname "enum") elt)
-  requests <- mapM (parseMessage enums version doc) (XML.findChildren (qname "request") elt)
-  events   <- mapM (parseMessage enums version doc) (XML.findChildren (qname "event") elt)
-  return WLInterface
+  requests <- mapM (parseMessage version) (XML.findChildren (qname "request") elt)
+  events   <- mapM (parseMessage version) (XML.findChildren (qname "event") elt)
+  return Interface
     { interfaceName        = name
     , interfaceDescription = description
     , interfaceVersion     = version
-    , interfaceSince       = since
     , interfaceRequests    = requests
     , interfaceEvents      = events
     , interfaceEnums       = enums
     }
 
 -- | Parse a `<message>`
-parseMessage :: [WLEnum] -> Int -> XML.Element -> XML.Element -> Maybe WLMessage
-parseMessage enums parentVersion doc elt = do
+parseMessage :: Int -> XML.Element -> Maybe Message
+parseMessage parentVersion elt = do
   name <- XML.findAttr (qname "name") elt
-  arguments <- mapM (parseArgument enums doc) (XML.findChildren (qname "arg") elt)
+  arguments <- mapM parseArgument (XML.findChildren (qname "arg") elt)
   let since = fromMaybe parentVersion (XML.findAttr (qname "since") elt >>= readMaybe)
   destructor <- case XML.findAttr (qname "type") elt of
     Just "destructor" -> Just True
     Nothing           -> Just False
     _                 -> Nothing
   description <- parseDescription elt
-  return WLMessage
+  return Message
     { messageName         = name
     , messageArguments    = arguments
     , messageIsDestructor = destructor
@@ -120,15 +88,12 @@ parseMessage enums parentVersion doc elt = do
     }
 
 -- | Parse an `<arg>`.
-parseArgument :: [WLEnum] -> XML.Element -> XML.Element -> Maybe WLArgument
-parseArgument enums doc elt = do
+parseArgument :: XML.Element -> Maybe Argument
+parseArgument elt = do
   name <- XML.findAttr (qname "name") elt
   typestr <- XML.findAttr (qname "type") elt
-  enum <- case XML.findAttr (qname "enum") elt of
-            Nothing  -> Just Nothing
-            Just str -> Just <$> findEnum str
-
-  let interface = XML.findAttr (qname "interface") elt >>= getInterface doc
+  let enum = XML.findAttr (qname "enum") elt
+  let interface = XML.findAttr (qname "interface") elt
   argtype <- case typestr of
     "int"    -> return $ ArgProtDataBox SIntWAT enum
     "uint"   -> return $ ArgProtDataBox SUIntWAT enum
@@ -145,29 +110,15 @@ parseArgument enums doc elt = do
     Just "false" -> Just False
     Just _       -> Nothing
   let summary = XML.findAttr (qname "summary") elt
-  return WLArgument
+  return Argument
     { argumentName     = name
     , argumentType     = argtype
     , argumentNullable = nullable
     , argumentSummary  = summary
     }
-  where
-    splitAttr :: String -> (Maybe String, String)
-    splitAttr []         = (Nothing , [])
-    splitAttr ('.' : ss) = (Just "" , ss)
-    splitAttr (s : ss)   =
-      case splitAttr ss of
-        (Just i , e) -> (Just $ s : i , e)
-        (Nothing , e) -> (Nothing , s : e)
-
-    findEnum :: String -> Maybe WLEnum
-    findEnum name =
-      case splitAttr name of
-        (Nothing , e) -> find (\enum -> enumName enum == e) enums
-        (Just i  , e) -> getEnum doc i e
 
 -- | Parse an `<enum>`
-parseEnum :: XML.Element -> Maybe WLEnum
+parseEnum :: XML.Element -> Maybe ArgEnum
 parseEnum elt = do
   name <- XML.findAttr (qname "name") elt
   entries <- mapM parseEntry (XML.findChildren (qname "entry") elt)
@@ -177,7 +128,7 @@ parseEnum elt = do
                 Nothing      -> Just Nothing
                 _            -> Nothing
   description <- parseDescription elt
-  return WLEnum
+  return ArgEnum
     { enumName        = name
     , enumEntries     = entries
     , enumBitfield    = bitfield
@@ -185,28 +136,28 @@ parseEnum elt = do
     }
 
 -- | Parse an enum `<entry>`
-parseEntry :: XML.Element -> Maybe WLEntry
+parseEntry :: XML.Element -> Maybe Entry
 parseEntry elt = do
   name <- XML.findAttr (qname "name") elt
   valueStr <- XML.findAttr (qname "value") elt
   value <- readMaybe valueStr
   let summary = XML.findAttr (qname "summary") elt
-  return WLEntry
+  return Entry
     { entryName    = name
     , entryValue   = value
     , entrySummary = summary
     }
 
 -- | Open a protocol file and parse it into a protocol
-parseFile :: FilePath -> IO (Maybe WLProtocol)
+parseFile :: FilePath -> IO (Maybe Protocol)
 parseFile filename = do
   fileContents <- readFile filename
   let doc  = XML.parseXMLDoc fileContents
-      prot = doc >>= parseProtocol :: Maybe WLProtocol
+      prot = doc >>= parseProtocol :: Maybe Protocol
   return prot
 
 -- | locate wayland.xml on disk and parse it
-readProtocol :: IO (Maybe WLProtocol)
+readProtocol :: IO (Maybe Protocol)
 readProtocol = do
   filename <- figureOutWaylandFile
   parseFile filename

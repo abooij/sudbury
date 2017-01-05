@@ -23,14 +23,9 @@ import Data.Word
 import Data.Char
 import Data.Singletons
 
-import Graphics.Sudbury.Protocol.Types
-
 generatePlainType :: String -> [String] -> Dec
 generatePlainType name constrs =
   DataD [] (mkName $ capitalize name) [] Nothing (map (flip NormalC [] . mkName . capitalize) constrs) []
-
-protocolTypeData :: WLProtocol -> (String , [String])
-protocolTypeData prot = (protocolName prot , map interfaceName (protocolInterfaces prot))
 
 class ObjectPackClass (a :: k) where
   data ObjectPack a :: *

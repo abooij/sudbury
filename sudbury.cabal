@@ -23,7 +23,11 @@ source-repository head
 library
   exposed-modules:
       Graphics.Sudbury.Protocol.XML
-    , Graphics.Sudbury.Protocol.Types
+    , Graphics.Sudbury.Protocol.XML.Types
+    , Graphics.Sudbury.Protocol.Knot
+    , Graphics.Sudbury.Protocol.Knot.Types
+    , Graphics.Sudbury.Protocol.Runtime
+    , Graphics.Sudbury.Protocol.Runtime.Types
     , Graphics.Sudbury.Socket
     , Graphics.Sudbury.Socket.Wayland
     , Graphics.Sudbury.WirePackages
@@ -53,6 +57,7 @@ library
     , mtl >=2.2 && <3
     , libffi <0.2
     , stm >=2.4 && <2.6
+    , exceptions >=0.7 && <0.9
   hs-source-dirs: .
   c-sources: cbits/wayland-msg-handling.c
   include-dirs: cbits

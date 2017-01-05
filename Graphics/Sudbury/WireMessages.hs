@@ -22,7 +22,7 @@ import qualified Data.ByteString.Builder.Extra as BBE
 import Graphics.Sudbury.WirePackages
 import Graphics.Sudbury.Internal
 import Graphics.Sudbury.Argument
-import Graphics.Sudbury.Protocol.Types
+import Graphics.Sudbury.Protocol.Runtime.Types
 
 type family WireArgument (t :: ArgumentType) where
   WireArgument 'IntWAT = Int32
@@ -69,7 +69,7 @@ boxedParse :: ArgTypeBox -> A.Parser WireArgBox
 boxedParse (ArgTypeBox tp) =
   WireArgBox tp <$> parseWireArgument tp
 
-decode :: Word32 -> Word16 -> WLMessage -> A.Parser WireMessage
+decode :: Word32 -> Word16 -> Message -> A.Parser WireMessage
 decode sender opcode msg = do
   args <- mapM (boxedParse . argDataProj . argumentType) (messageArguments msg)
   return WireMessage
