@@ -75,6 +75,7 @@ foreign-library wayland-client
   other-modules:
       Graphics.Sudbury.CABI.Client
     , Graphics.Sudbury.CABI.Common
+    , Graphics.Sudbury.CABI.Protocol
     , Graphics.Sudbury.CABI.Structs
     , Graphics.Sudbury.CABI.DispatchFFI
   hs-source-dirs: .
