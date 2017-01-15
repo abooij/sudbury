@@ -51,6 +51,7 @@ foreign import ccall unsafe "wayland-msg-handling.h recvmsg_wayland"
         -> IO CInt -- bytes received
 
 
+-- TODO limit number of `Fd`s to be sent to 28.
 sendToWayland :: Fd -> BS.ByteString -> [Fd] -> IO CInt
 sendToWayland socket bs fds = do
     CC.threadWaitWrite $ fromIntegral socket

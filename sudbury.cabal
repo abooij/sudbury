@@ -120,14 +120,17 @@ test-suite tests
    other-modules:
       Wire
     , Arbitrary
+    , Socket
   type: exitcode-stdio-1.0
   build-depends:
-       base
+      base
     , sudbury
     , QuickCheck
     , test-framework
     , test-framework-quickcheck2
     , attoparsec
-     , bytestring
+    , bytestring
+    , network
+    , unix
   ghc-options: -Wall
   default-language: Haskell2010
