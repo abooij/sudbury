@@ -7,58 +7,95 @@ Maintainer  : auke@tulcod.com
 Stability   : experimental
 Portability : POSIX
 -}
-{-# LANGUAGE Safe #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE BangPatterns #-}
 module Graphics.Sudbury.WirePackages where
 
 import Data.Word
-import Data.Monoid ((<>))
-import GHC.Generics
+import Data.Store
+import Data.Foldable
+import Data.Store.Core
+import Data.Store.Internal
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Internal as B
 import qualified Data.ByteString.Builder as BB
-import qualified Data.ByteString.Builder.Extra as BBE
-import qualified Data.Attoparsec.ByteString as A
+import Control.Monad
+import Foreign.Ptr (minusPtr)
 
-import Graphics.Sudbury.Internal
+
 
 data WirePackage = WirePackage
   { wirePackageSender  :: Word32
   , wirePackageSize    :: Word16
   , wirePackageOpcode  :: Word16
   , wirePackagePayload :: B.ByteString
-  } deriving (Eq, Show, Generic)
+  } deriving (Eq, Show)
 
--- | Construct a wayland wire wirePackage
+-- | Storable that writes in the Wayland binary format.
+-- Allows us to use the optimized machinery from Data.Store
+instance Store WirePackage where
+  size = VarSize $ fromIntegral . wirePackageSize
+  poke p = do
+    poke $ wirePackageSender p
+    poke $ wirePackageOpcode p 
+    poke $ wirePackageSize p
+    let (sourceFp, sourceOffset, sourceLength) = B.toForeignPtr $ wirePackagePayload p
+    pokeFromForeignPtr sourceFp sourceOffset sourceLength
+  peek = do
+    sen <- peek
+    op <- peek
+    sz <- peek
+    let payloadSize = fromIntegral sz - 8
+    plraw <- peekToPlainForeignPtr "Data.ByteString.ByteString" payloadSize
+    let pl = B.PS plraw 0 payloadSize
+    return $ WirePackage 
+      { wirePackageSender  = sen
+      , wirePackageSize    = sz
+      , wirePackageOpcode  = op
+      , wirePackagePayload = pl
+      }
+  {-# INLINE size #-}
+  {-# INLINE peek #-}
+  {-# INLINE poke #-}
+
+-- | Newtype wrapper around a list of WirePackages is 
+-- necessary to write the correct amount of pad bytes
+-- and to account for non-prepending of list length
+newtype WirePackageStream = WirePackageStream 
+  { unWirePackageStream :: [WirePackage]
+  } deriving (Eq, Show)
+
+-- | Storable instance for a number of Wayland wirepackages
+-- that accounts for padding and deserializing.
+instance Store WirePackageStream where
+  size = VarSize $ foldl' sumAlignedSize 0 . unWirePackageStream
+    where
+      VarSize f = size :: Size WirePackage
+      sumAlignedSize :: Int -> WirePackage -> Int
+      sumAlignedSize acc x = let pkgSize = f x in pkgSize + acc + (pkgSize `mod` 4)
+
+  poke (WirePackageStream xs) = traverse_ pokeAlign xs
+    where
+      {-# INLINE pokeAlign #-}
+      pokeAlign wp = let align = fromIntegral $ wirePackageSize wp `mod` 4
+                         emptyByte = 0 :: Word8 -- Maybe skipPoke would be better
+                      in poke wp >> replicateM_ align (poke emptyByte)
+
+  peek = WirePackageStream <$> go
+    where  
+      remaining :: Peek Int
+      remaining = Peek $ \ps ptr -> return (ptr, peekStateEndPtr ps `minusPtr` ptr)
+      go :: Peek [WirePackage]
+      go = 
+        do bytesLeft <- remaining
+           if bytesLeft < 8 then Peek $ \_ ptr -> return (ptr, [])
+                            else do wp <- peek :: Peek WirePackage
+                                    let align = fromIntegral $ wirePackageSize wp `mod` 4
+                                    skip align
+                                    let !x = (wp :) in x <$> go
+  {-# INLINE size #-}
+  {-# INLINE peek #-}
+  {-# INLINE poke #-}
+
+
 wirePack :: WirePackage -> BB.Builder
-wirePack msg = wirePackBuilder
-  (wirePackageSender msg)
-  (wirePackageSize msg)
-  (wirePackageOpcode msg)
-  (BB.byteString $ wirePackagePayload msg)
-
--- | Construct a wayland wire wirePackage with payload given as a 'Builder'.
-wirePackBuilder :: Word32 -> Word16 -> Word16 -> BB.Builder -> BB.Builder
-wirePackBuilder sender size opcode payload =
-  BBE.word32Host sender
-  <>
-  -- FIXME make byte order portable here
-  BBE.word16Host opcode
-  <>
-  BBE.word16Host size
-  <>
-  payload
-
-parseWirePackage :: A.Parser WirePackage
-parseWirePackage = do
-  sender <- anyWord32he
-  opcode <- anyWord16he
-  size   <- anyWord16he
-  payload <- A.take (fromIntegral size - 8)
-  return WirePackage { wirePackageSender  = sender
-                 , wirePackageSize    = size
-                 , wirePackageOpcode  = opcode
-                 , wirePackagePayload = payload
-                 }
-
-pkgStream :: A.Parser [WirePackage]
-pkgStream = A.many' parseWirePackage
+wirePack = BB.byteString . encode

@@ -46,6 +46,8 @@ library
     , bytestring >=0.9 && <1
     , attoparsec >=0.13 && <1
     , attoparsec-binary >=0.2 && <1
+    , store
+    , store-core
     , cpu >=0.1 && <1
     , singletons >=2 && <3
     , template-haskell >=2.11 && <3
@@ -65,7 +67,7 @@ library
   ghc-options: -Wall -fwarn-incomplete-record-updates -fwarn-unused-do-bind
 
 foreign-library wayland-client
-  lib-version-info: 3:0:3
+  --lib-version-info: 3:0:3
   type: native-shared
   other-modules:
       Graphics.Sudbury.CABI.Client
@@ -85,6 +87,8 @@ foreign-library wayland-client
     , bytestring >=0.9 && <1
     , attoparsec >=0.13 && <1
     , attoparsec-binary >=0.2 && <1
+    , store
+    , store-core
     , cpu >=0.1 && <1
     , singletons >=2 && <3
     , template-haskell >=2.11 && <3
@@ -120,6 +124,8 @@ benchmark serial-bench-bench
                      , deepseq
                      , bytestring
                      , attoparsec
+                     , attoparsec-binary
+                     , cpu
                      , store
                      , store-core
   default-language:    Haskell2010
@@ -138,6 +144,7 @@ test-suite tests
     , test-framework
     , test-framework-quickcheck2
     , attoparsec
-     , bytestring
+    , bytestring
+    , store
   ghc-options: -Wall
   default-language: Haskell2010
