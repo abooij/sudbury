@@ -46,18 +46,17 @@ instance Arbitrary WirePackageStream where
 -- the required padded bytes.
 newtype WirePackageBinary = WirePackageBinary
   { unWpBin :: B.ByteString
-  } deriving (Show, Eq)
+  } deriving (Eq)
+
+instance Show WirePackageBinary where
+  show = show . B.unpack . unWpBin
 
 
 instance Arbitrary WirePackageBinary where
   arbitrary = sized $ \ n ->
-    do k <- choose (2, n)
+    do k <- choose (0, n)
        WirePackageBinary . B.concat <$> replicateM k genAlignedWp
     where
       genAlignedWp :: Gen B.ByteString
-      genAlignedWp =
-        do wp <- arbitrary :: Gen WirePackage
-           let padBytes = fromIntegral $ wirePackageSize wp `mod` 4
-               pad = B.pack $ replicate padBytes (0 :: Word8)
-           return $ S.encode wp `B.append` pad
+      genAlignedWp = S.encode <$> (arbitrary :: Gen WirePackage)
 

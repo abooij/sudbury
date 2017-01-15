@@ -34,6 +34,7 @@ instance HasResolution WL23_8 where
   resolution _ = 256 -- 2^8
 -- Duplicate from tests/Arbitrary.hs. Should think of a better
 -- solution in due time
+
 instance Q.Arbitrary B.ByteString where
   arbitrary = do
     someBytes <- Q.arbitrary
@@ -43,32 +44,36 @@ instance Q.Arbitrary WirePackage where
   arbitrary = do
     sender <- Q.arbitrary
     opcode <- Q.arbitrary
-    payloadSize <- Q.elements ([20..200] :: [Int])
-    payload <- B.pack <$> Q.vectorOf payloadSize (Q.arbitrary :: Q.Gen Word8)
-    let size    = fromIntegral $ 8 + payloadSize
+    payload <- Q.arbitrary
+    let size    = fromIntegral $ 8 + B.length payload
     return WirePackage
       { wirePackageSender  = sender
       , wirePackageSize    = size
       , wirePackageOpcode  = opcode
       , wirePackagePayload = payload
       }
+
+instance Q.Arbitrary WirePackageStream where
+  arbitrary = WirePackageStream <$> Q.arbitrary
+
+-- | Newtype wrapper for the binary format of Wayland. Allows
+-- us to construct arbitrary messages from n WirePackages with
+-- the required padded bytes.
 newtype WirePackageBinary = WirePackageBinary
   { unWpBin :: B.ByteString
-  } deriving (Show, Eq)
+  } deriving (Eq)
+
+instance Show WirePackageBinary where
+  show = show . B.unpack . unWpBin
 
 
 instance Q.Arbitrary WirePackageBinary where
   arbitrary = Q.sized $ \ n ->
-    do k <- Q.choose (2, n)
+    do k <- Q.choose (0, n)
        WirePackageBinary . B.concat <$> replicateM k genAlignedWp
     where
       genAlignedWp :: Q.Gen B.ByteString
-      genAlignedWp =
-        do wp <- Q.arbitrary :: Q.Gen WirePackage
-           let padBytes = fromIntegral $ wirePackageSize wp `mod` 4
-               pad = B.pack $ replicate padBytes (0 :: Word8)
-           return $ encode wp `B.append` pad
-
+      genAlignedWp = encode <$> (Q.arbitrary :: Q.Gen WirePackage)
 deriving instance Generic WirePackageStream
 instance NFData WirePackageStream
 
@@ -89,10 +94,10 @@ pkgStream' = A.many' parseWirePackage
 
 
 randomWirePackage :: IO [WirePackage]
-randomWirePackage = Q.generate $ Q.vectorOf 10000 (Q.arbitrary :: Q.Gen WirePackage)
+randomWirePackage = Q.generate $ Q.vectorOf 100 (Q.arbitrary :: Q.Gen WirePackage)
 
 randomByteString :: IO [B.ByteString]
-randomByteString = Q.generate $ fmap unWpBin <$> Q.vectorOf 10000 Q.arbitrary
+randomByteString = Q.generate $ fmap unWpBin <$> Q.vectorOf 100 (Q.arbitrary :: Q.Gen WirePackageBinary)
 
 decodeAttos :: B.ByteString -> [WirePackage]
 decodeAttos = unsafeRight . A.parseOnly (A.many' parseWirePackage)
@@ -107,7 +112,9 @@ decodedWorking = do
   print $ map (decodeEx . encodeBS) a == a
 
 
+
 fromRight (Right a) = a
+fromRight (Left a) = error $ show a
 
 deriving instance Generic WirePackage
 instance NFData WirePackage
@@ -117,11 +124,13 @@ main = do
   rw <- randomWirePackage
   rb `deepseq` return ()
   rw `deepseq` return ()
-  let decodeEx' = decodeEx :: B.ByteString -> WirePackageStream
+  let decode' :: B.ByteString -> [WirePackage]
+      decode' = fromRight . decodeMany
+
   defaultMain 
     [ bgroup "parse_random" 
       [ bench "id" $ nf (map id) rb
-      , bench "storeable" $ nf (map decodeEx') rb 
+      , bench "storeable" $ nf (map decode') rb 
       , bench "attoParsec1" $ nf (map decodeAttos) rb
       ]
     , bgroup "encod_random" 

@@ -11,6 +11,7 @@ Portability : POSIX
 module Graphics.Sudbury.WirePackages where
 
 import Data.Word
+import Data.Monoid 
 import Data.Store
 import Data.Foldable
 import Data.Store.Core
@@ -18,8 +19,13 @@ import Data.Store.Internal
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Internal as B
 import qualified Data.ByteString.Builder as BB
+import System.IO.Unsafe (unsafePerformIO)
+
 import Control.Monad
-import Foreign.Ptr (minusPtr)
+import Foreign.Ptr (minusPtr, plusPtr, Ptr)
+import Foreign.ForeignPtr (ForeignPtr, withForeignPtr, castForeignPtr)
+
+import Control.Exception (Exception(..), throwIO, try)
 
 
 
@@ -33,13 +39,19 @@ data WirePackage = WirePackage
 -- | Storable that writes in the Wayland binary format.
 -- Allows us to use the optimized machinery from Data.Store
 instance Store WirePackage where
-  size = VarSize $ fromIntegral . wirePackageSize
+  size = VarSize $ \x -> let sz = fromIntegral (wirePackageSize x) in sz + (sz `mod` 4)
   poke p = do
     poke $ wirePackageSender p
     poke $ wirePackageOpcode p 
     poke $ wirePackageSize p
     let (sourceFp, sourceOffset, sourceLength) = B.toForeignPtr $ wirePackagePayload p
     pokeFromForeignPtr sourceFp sourceOffset sourceLength
+    pokeAlign p
+    where
+      {-# INLINE pokeAlign #-}
+      pokeAlign wp = let align = fromIntegral $ wirePackageSize wp `mod` 4
+                         emptyByte = 0 :: Word8 -- Maybe skipPoke would be better
+                      in replicateM_ align (poke emptyByte)
   peek = do
     sen <- peek
     op <- peek
@@ -47,6 +59,7 @@ instance Store WirePackage where
     let payloadSize = fromIntegral sz - 8
     plraw <- peekToPlainForeignPtr "Data.ByteString.ByteString" payloadSize
     let pl = B.PS plraw 0 payloadSize
+    skip $ fromIntegral sz `mod` 4
     return $ WirePackage 
       { wirePackageSender  = sen
       , wirePackageSize    = sz
@@ -67,35 +80,41 @@ newtype WirePackageStream = WirePackageStream
 -- | Storable instance for a number of Wayland wirepackages
 -- that accounts for padding and deserializing.
 instance Store WirePackageStream where
-  size = VarSize $ foldl' sumAlignedSize 0 . unWirePackageStream
+  size = VarSize $ getSum . foldMap (Sum . f) . unWirePackageStream
     where
       VarSize f = size :: Size WirePackage
-      sumAlignedSize :: Int -> WirePackage -> Int
-      sumAlignedSize acc x = let pkgSize = f x in pkgSize + acc + (pkgSize `mod` 4)
+  
+  poke = traverse_ poke . unWirePackageStream
 
-  poke (WirePackageStream xs) = traverse_ pokeAlign xs
-    where
-      {-# INLINE pokeAlign #-}
-      pokeAlign wp = let align = fromIntegral $ wirePackageSize wp `mod` 4
-                         emptyByte = 0 :: Word8 -- Maybe skipPoke would be better
-                      in poke wp >> replicateM_ align (poke emptyByte)
-
-  peek = WirePackageStream <$> go
-    where  
-      remaining :: Peek Int
-      remaining = Peek $ \ps ptr -> return (ptr, peekStateEndPtr ps `minusPtr` ptr)
-      go :: Peek [WirePackage]
-      go = 
-        do bytesLeft <- remaining
-           if bytesLeft < 8 then Peek $ \_ ptr -> return (ptr, [])
-                            else do wp <- peek :: Peek WirePackage
-                                    let align = fromIntegral $ wirePackageSize wp `mod` 4
-                                    skip align
-                                    let !x = (wp :) in x <$> go
+  peek = undefined
   {-# INLINE size #-}
   {-# INLINE peek #-}
   {-# INLINE poke #-}
 
+decodeMany :: Store a => B.ByteString -> Either PeekException [a]
+decodeMany = unsafePerformIO . try . decodeIOMany
+
+decodeIOMany :: Store a => B.ByteString -> IO [a]
+decodeIOMany = decodeIOWithMany peek
+
+decodeIOWithMany :: Peek a -> B.ByteString -> IO [a]
+decodeIOWithMany mypeek (B.PS x s len) =
+    withForeignPtr x $ \ptr0 ->
+        let ptr = ptr0 `plusPtr` s
+        in decodeIOWithFromPtrMany mypeek ptr len
+{-# INLINE decodeIOWithMany #-}
+
+decodeIOWithFromPtrMany :: Peek a -> Ptr Word8 -> Int -> IO [a]
+decodeIOWithFromPtrMany mypeek ptr len = do
+  if len < 8
+     then return []
+     else do
+         (offset, x) <- decodeIOPortionWithFromPtr mypeek ptr len
+         (x : ) <$> decodeIOWithFromPtrMany mypeek (ptr `plusPtr` offset) (len - offset)
+       --throwIO $ PeekException (len - offset) "Didn't consume all input."
+{-# INLINE decodeIOWithFromPtrMany #-}
 
 wirePack :: WirePackage -> BB.Builder
 wirePack = BB.byteString . encode
+
+

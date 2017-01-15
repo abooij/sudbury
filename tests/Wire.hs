@@ -17,17 +17,22 @@ tests = testGroup "Wire protocol transformations"
   , testProperty "wire stream decoding identity" prop_package_binary_id
   ]
 
+
+unsafeRight :: (Show a) => Either a b -> b
+unsafeRight (Right a) = a
+unsafeRight (Left a) = error $ show a
 -- | Test if packing and then parsing a 'WirePackage' yields the original package.
 prop_package_id :: WirePackage -> Property
 prop_package_id = (===) <*> (S.decodeEx . S.encode)
 
 prop_package_stream_id :: WirePackageStream -> Property
-prop_package_stream_id = (===) <*> (WirePackageStream . S.decodeEx . S.encode . unWirePackageStream)
+prop_package_stream_id = (===) <*> (decode' . S.encode )
+  where
+    decode' :: B.ByteString -> WirePackageStream
+    decode' = WirePackageStream . unsafeRight . decodeMany
 
 prop_package_binary_id :: WirePackageBinary -> Property
 prop_package_binary_id = (===) <*> (WirePackageBinary . S.encode . decode' . unWpBin)
   where
     decode' :: B.ByteString -> WirePackageStream
-    decode' = S.decodeEx
-
-
+    decode' = WirePackageStream . unsafeRight . decodeMany
