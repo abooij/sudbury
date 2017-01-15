@@ -6,63 +6,56 @@ License     : MIT
 Maintainer  : auke@tulcod.com
 Stability   : experimental
 -}
-module Graphics.Sudbury.Protocol.XML.Types
-  ( module Graphics.Sudbury.Protocol.XML.Types
-  , RT.Argument(..)
-  , RT.ArgEnum(..)
-  , RT.Entry(..)
-  , RT.ArgProtDataBox(..)
-  , RT.Description
-  ) where
+module Graphics.Sudbury.Protocol.XML.Types where
 
-import qualified Graphics.Sudbury.Protocol.Runtime.Types as RT
-{-
-data ArgProtDataBox = forall t. ArgProtDataBox (SArgumentType t) (ArgProtData t)
+import Graphics.Sudbury.Argument
 
-argDataProj :: ArgProtDataBox -> ArgTypeBox
+type Description = (String , String)
+
+data ArgProtDataBox et it = forall t. ArgProtDataBox (SArgumentType t) (ArgProtData et it t)
+
+argDataProj :: ArgProtDataBox et it -> ArgTypeBox
 argDataProj (ArgProtDataBox tp _) = ArgTypeBox tp
 
-instance Eq (ArgProtDataBox) where
+instance Eq (ArgProtDataBox et it) where
   x == y = argDataProj x == argDataProj y
-instance Show (ArgProtDataBox) where
+instance Show (ArgProtDataBox et it) where
   show x = "ArgProtDataBox " ++ show (argDataProj x) ++ " [...]"
 
-type family ArgProtData (t :: ArgumentType) where
-  ArgProtData 'IntWAT = Maybe String
-  ArgProtData 'UIntWAT = Maybe String
-  ArgProtData 'FixedWAT = ()
-  ArgProtData 'StringWAT = ()
-  ArgProtData 'ObjectWAT = Maybe String
-  ArgProtData 'NewIdWAT = Maybe String
-  ArgProtData 'ArrayWAT = ()
-  ArgProtData 'FdWAT = ()
--}
+type family ArgProtData (et :: *) (it :: *) (t :: ArgumentType) where
+  ArgProtData et _  'IntWAT = Maybe et
+  ArgProtData et _  'UIntWAT = Maybe et
+  ArgProtData _  _  'FixedWAT = ()
+  ArgProtData _  _  'StringWAT = ()
+  ArgProtData _  it 'ObjectWAT = Maybe it
+  ArgProtData _  it 'NewIdWAT = Maybe it
+  ArgProtData _  _  'ArrayWAT = ()
+  ArgProtData _  _  'FdWAT = ()
 
-data Protocol = Protocol
-  { protocolName :: String
-  , protocolDescription :: Maybe RT.Description
-  , protocolInterfaces :: [Interface]
+data Protocol et it = Protocol
+  { protocolName :: Maybe String
+  , protocolDescription :: Maybe Description
+  , protocolInterfaces :: [Interface et it]
   , protocolCopyright :: Maybe String
   } deriving (Eq, Show)
 
-data Interface = Interface
+data Interface et it = Interface
   { interfaceName :: String
-  , interfaceDescription :: Maybe RT.Description
+  , interfaceDescription :: Maybe Description
   , interfaceVersion :: Int
-  , interfaceRequests :: [Message]
-  , interfaceEvents :: [Message]
-  , interfaceEnums :: [RT.ArgEnum]
+  , interfaceRequests :: [Message et it]
+  , interfaceEvents :: [Message et it]
+  , interfaceEnums :: [ArgEnum]
   } deriving (Eq, Show)
 
-data Message = Message
+data Message et it = Message
   { messageName :: String
-  , messageArguments :: [RT.Argument]
+  , messageArguments :: [Argument et it]
   , messageIsDestructor :: Bool
-  , messageSince :: Int
-  , messageDescription :: Maybe RT.Description
+  , messageSince :: Maybe Int
+  , messageDescription :: Maybe Description
   } deriving (Eq, Show)
 
-{-
 data ArgEnum = ArgEnum
   { enumName :: String
   , enumEntries :: [Entry]
@@ -76,10 +69,14 @@ data Entry = Entry
   , entrySummary :: Maybe String
   } deriving (Eq, Show)
 
-data Argument = Argument
+data Argument et it = Argument
   { argumentName :: String
-  , argumentType :: ArgProtDataBox
+  , argumentType :: ArgProtDataBox et it
   , argumentNullable :: Bool
   , argumentSummary :: Maybe String
   } deriving (Eq, Show)
--}
+
+type XMLArgument = Argument String String
+type XMLMessage = Message String String
+type XMLInterface = Interface String String
+type XMLProtocol = Protocol String String

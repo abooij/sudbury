@@ -15,7 +15,7 @@ import qualified Data.Map as M -- FIXME: Should this be Strict? or an IntMap?
 import Data.List
 
 import Graphics.Sudbury.Internal
-import Graphics.Sudbury.Protocol.Runtime.Types
+import Graphics.Sudbury.Protocol.XML.Types
 import Graphics.Sudbury.WirePackages
 
 {-
@@ -24,8 +24,8 @@ Some fields in this file should probably be strict to avoid memory leaks.
 
 -- placeholders until I figure out what these should be
 type MyObjectType = String
-type MyMessageType = Message
-type ProtocolSet = Protocol
+type MyMessageType = XMLMessage
+type ProtocolSet = XMLProtocol
 
 {-
 state-related operations:
@@ -64,7 +64,7 @@ data ConnectionState = ConnectionState
 
 -- What will our analogue to 'wl_global_bind_func_t' be?
 data Global = Global
-  { globalInterface :: Interface
+  { globalInterface :: XMLInterface
   , globalType :: MyObjectType
   }
 

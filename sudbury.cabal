@@ -58,6 +58,7 @@ library
     , libffi <0.2
     , stm >=2.4 && <2.6
     , exceptions >=0.7 && <0.9
+    , data-fix
   hs-source-dirs: .
   c-sources: cbits/wayland-msg-handling.c
   include-dirs: cbits

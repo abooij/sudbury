@@ -17,18 +17,18 @@ import Foreign.Marshal.Array
 import Foreign.Ptr
 import Foreign.Storable
 
-import qualified Graphics.Sudbury.Protocol.Runtime.Types as RT
+import Graphics.Sudbury.Protocol.XML.Types
 import Graphics.Sudbury.Argument
 
 import Graphics.Sudbury.CABI.Structs
 import Graphics.Sudbury.CABI.Common
 
-readProtocol :: Ptr WL_interface -> IO RT.Protocol
+readProtocol :: Ptr WL_interface -> IO XMLProtocol
 readProtocol ptr = do
   ifaces <- iterateInterfaces [ptr]
-  return $ RT.Protocol ifaces
+  return $ Protocol Nothing Nothing ifaces Nothing
 
-iterateInterfaces :: [Ptr WL_interface] -> IO [RT.Interface]
+iterateInterfaces :: [Ptr WL_interface] -> IO [XMLInterface]
 iterateInterfaces oldPtrs = do
    res <- mapM (peek >=> readInterface) oldPtrs
    let interfaces = map fst res
@@ -39,7 +39,7 @@ iterateInterfaces oldPtrs = do
       then return interfaces
       else iterateInterfaces newPtrs
 
-readInterface :: WL_interface -> IO (RT.Interface , [[Ptr WL_interface]])
+readInterface :: WL_interface -> IO (XMLInterface , [[Ptr WL_interface]])
 readInterface iface = do
   name <- peekCString (ifaceName iface)
   requests <- mapM (peekElemOff (ifaceMethods iface)) [0 .. (fromIntegral $ ifaceMethodCount iface)]
@@ -47,12 +47,12 @@ readInterface iface = do
   (requestObjs , requestIfaces)  <- unzip <$> mapM readMessage requests
   (eventObjs   , eventIfaces)    <- unzip <$> mapM readMessage events
   return
-    ( RT.Interface name (fromIntegral $ ifaceVersion iface) requestObjs eventObjs []
+    ( Interface name Nothing (fromIntegral $ ifaceVersion iface) requestObjs eventObjs []
     , requestIfaces ++ eventIfaces
     )
   -- enum data not provided by C ABI. TODO explain why we can pretend there are none
 
-readMessage :: WL_message -> IO (RT.Message , [Ptr WL_interface])
+readMessage :: WL_message -> IO (XMLMessage , [Ptr WL_interface])
 readMessage msg = do
   name <- peekCString (msgName msg)
   signature <- peekCString (msgSignature msg)
@@ -63,12 +63,12 @@ readMessage msg = do
   let arguments =
         zipWith
           -- name not provided TODO why can we pretend this is empty?
-          (\argtype isNullable -> RT.Argument "" argtype isNullable Nothing)
+          (\argtype isNullable -> Argument "" argtype isNullable Nothing)
           argumentData
           areNullable
   subIfaces <- peekArray (length arguments) (msgInterfaces msg)
   return
-    ( RT.Message name arguments False (fromMaybe 0 since)
+    ( Message name arguments False (Just $ fromMaybe 0 since) Nothing
       -- destructor data not provided. TODO why can we pretend this is false?
     , subIfaces
     )
@@ -81,7 +81,7 @@ readMessage msg = do
          else do
            iface <- peek ifacePtr
            Just <$> peekCString (ifaceName iface)
-    readArgument :: Ptr (Ptr WL_interface) -> Int -> SArgumentType t -> IO (RT.ArgProtData t)
+    readArgument :: Ptr (Ptr WL_interface) -> Int -> SArgumentType t -> IO (ArgProtData String String t)
     -- enum data not provided. TODO explain why we can pretend there is none
     readArgument _   _ SIntWAT    = return Nothing
     readArgument _   _ SUIntWAT   = return Nothing
@@ -91,8 +91,8 @@ readMessage msg = do
     readArgument ptr i SNewIdWAT  = readInterfaceName ptr i
     readArgument _   _ SArrayWAT  = return ()
     readArgument _   _ SFdWAT     = return ()
-    goArg :: Ptr (Ptr WL_interface) -> Int -> ArgTypeBox -> IO RT.ArgProtDataBox
-    goArg ptr i (ArgTypeBox tp) = RT.ArgProtDataBox tp <$> readArgument ptr i tp
+    goArg :: Ptr (Ptr WL_interface) -> Int -> ArgTypeBox -> IO (ArgProtDataBox String String)
+    goArg ptr i (ArgTypeBox tp) = ArgProtDataBox tp <$> readArgument ptr i tp
 
 readSignature :: String -> (Maybe Int, [(Bool , ArgTypeBox)])
 readSignature str =

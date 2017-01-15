@@ -21,14 +21,14 @@ qname :: String -> XML.QName
 qname name = XML.QName name Nothing Nothing
 
 -- | Parse a wayland XML document
-parseProtocol :: XML.Element -> Maybe Protocol
+parseProtocol :: XML.Element -> Maybe XMLProtocol
 parseProtocol doc = do
   docName <- XML.findAttr (qname "name") doc
   description <- parseDescription doc
   let copyright = XML.strContent <$> XML.findChild (qname "copyright") doc
   interfaces <- mapM parseInterface (XML.findChildren (qname "interface") doc)
   return Protocol
-    { protocolName        = docName
+    { protocolName        = Just docName
     , protocolDescription = description
     , protocolInterfaces  = interfaces
     , protocolCopyright   = copyright
@@ -50,7 +50,7 @@ parseDescription elt = do
 --
 --   It is given the list of interfaces in this protocol to cross-reference enum attributes.
 --   Note that this circularity is resolved using `mfix` in `parseProtocol`.
-parseInterface :: XML.Element -> Maybe Interface
+parseInterface :: XML.Element -> Maybe (Interface String String)
 parseInterface elt = do
   name <- XML.findAttr (qname "name") elt
   description <- parseDescription elt
@@ -68,7 +68,7 @@ parseInterface elt = do
     }
 
 -- | Parse a `<message>`
-parseMessage :: Int -> XML.Element -> Maybe Message
+parseMessage :: Int -> XML.Element -> Maybe (Message String String)
 parseMessage parentVersion elt = do
   name <- XML.findAttr (qname "name") elt
   arguments <- mapM parseArgument (XML.findChildren (qname "arg") elt)
@@ -82,12 +82,12 @@ parseMessage parentVersion elt = do
     { messageName         = name
     , messageArguments    = arguments
     , messageIsDestructor = destructor
-    , messageSince        = since
+    , messageSince        = Just since
     , messageDescription  = description
     }
 
 -- | Parse an `<arg>`.
-parseArgument :: XML.Element -> Maybe Argument
+parseArgument :: XML.Element -> Maybe (Argument String String)
 parseArgument elt = do
   name <- XML.findAttr (qname "name") elt
   typestr <- XML.findAttr (qname "type") elt
@@ -148,15 +148,15 @@ parseEntry elt = do
     }
 
 -- | Open a protocol file and parse it into a protocol
-parseFile :: FilePath -> IO (Maybe Protocol)
+parseFile :: FilePath -> IO (Maybe XMLProtocol)
 parseFile filename = do
   fileContents <- readFile filename
   let doc  = XML.parseXMLDoc fileContents
-      prot = doc >>= parseProtocol :: Maybe Protocol
+      prot = doc >>= parseProtocol :: Maybe XMLProtocol
   return prot
 
 -- | locate wayland.xml on disk and parse it
-readProtocol :: IO (Maybe Protocol)
+readProtocol :: IO (Maybe XMLProtocol)
 readProtocol = do
   filename <- figureOutWaylandFile
   parseFile filename

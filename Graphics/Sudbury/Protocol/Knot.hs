@@ -15,10 +15,11 @@ import Control.Monad.Catch
 import Control.Monad.Fix
 import Data.Typeable
 import Data.List (find, findIndex, elemIndex)
+import Data.Fix
 
 import Graphics.Sudbury.Argument
-import qualified Graphics.Sudbury.Protocol.Runtime.Types as RT
-import qualified Graphics.Sudbury.Protocol.Knot.Types as KT
+import Graphics.Sudbury.Protocol.XML.Types
+import Graphics.Sudbury.Protocol.Knot.Types
 
 data KnottingException = NoSuchInterfaceException String | NoSuchEnumException String
   deriving (Typeable)
@@ -27,47 +28,49 @@ instance Show KnottingException where
   show (NoSuchEnumException name) = "No such enum " ++ name
 instance Exception KnottingException
 
-
-tieProtocol :: forall m . (MonadFix m, MonadThrow m) => RT.Protocol -> m KT.Protocol
-tieProtocol (RT.Protocol oldInterfaces) = KT.Protocol <$> mfix go
+type DirectInterface = Interface ArgEnum KnotInterface
+tieProtocol :: forall m . (MonadFix m, MonadThrow m) => XMLProtocol -> m KnotProtocol
+tieProtocol (Protocol n d oldInterfaces c) = (\i -> Protocol n d i c) <$> mfix go
   where
-    go :: [KT.Interface] -> m [KT.Interface]
+    go :: [DirectInterface] -> m [DirectInterface]
     go newInterfaces = mapM tieInterface oldInterfaces
       where
-        -- newInterfaces :: m [KT.Interface]
+        -- newInterfaces :: m [Interface]
         -- newInterfaces = mapM tieInterface oldInterfaces
-        tieInterface :: RT.Interface -> m KT.Interface
-        tieInterface (RT.Interface iname version requests events enums)
+        tieInterface :: XMLInterface -> m DirectInterface
+        tieInterface (Interface iname descr version requests events enums)
           = do
             requests' <- mapM tieMessage requests
             events' <- mapM tieMessage events
-            return $ KT.Interface
+            return $ Interface
               iname
+              descr
               version
               requests'
               events'
               enums
           where
-            tieMessage :: RT.Message -> m KT.Message
-            tieMessage (RT.Message name args destructor since)
+            tieMessage :: XMLMessage -> m KnotMessage
+            tieMessage (Message name args destructor since mdescr)
               = do
                 args' <- mapM tieArgument args
-                return $ KT.Message
+                return $ Message
                   name
                   args'
                   destructor
                   since
-            tieArgument :: RT.Argument -> m KT.Argument
-            tieArgument (RT.Argument name argtype nullable summary)
+                  mdescr
+            tieArgument :: XMLArgument -> m KnotArgument
+            tieArgument (Argument name argtype nullable summary)
               = do
                 argtype' <- case argtype of
-                  RT.ArgProtDataBox tp x -> KT.ArgProtDataBox tp <$> (tieArgType tp x)
-                return $ KT.Argument
+                  ArgProtDataBox tp x -> ArgProtDataBox tp <$> (tieArgType tp x)
+                return $ Argument
                   name
                   argtype'
                   nullable
                   summary
-            tieArgType :: SArgumentType t -> RT.ArgProtData t -> m (KT.ArgProtData t)
+            tieArgType :: SArgumentType t -> ArgProtData String String t -> m (ArgProtData ArgEnum KnotInterface t)
             tieArgType SIntWAT x = enumByName x
             tieArgType SUIntWAT x = enumByName x
             tieArgType SFixedWAT x = return x
@@ -76,69 +79,71 @@ tieProtocol (RT.Protocol oldInterfaces) = KT.Protocol <$> mfix go
             tieArgType SNewIdWAT x = interfaceByName x
             tieArgType SArrayWAT x = return x
             tieArgType SFdWAT x = return x
-            interfaceByName :: Maybe String -> m (Maybe KT.Interface)
+            interfaceByName :: Maybe String -> m (Maybe KnotInterface)
             interfaceByName (Just name) =
-              case findIndex ((== name) . RT.interfaceName) oldInterfaces of
+              case findIndex ((== name) . interfaceName) oldInterfaces of
                 Nothing -> throwM $ NoSuchInterfaceException name
-                Just i  -> return $ Just $ newInterfaces !! i
+                Just i  -> return $ Just $ Fix $ newInterfaces !! i
             interfaceByName Nothing = return Nothing
-            enumByName :: Maybe String -> m (Maybe KT.ArgEnum)
+            enumByName :: Maybe String -> m (Maybe ArgEnum)
             enumByName (Just name)
               | '.' `elem` name =
                   case do
                        dotIdx <- '.' `elemIndex` name
                        let ifaceName = take dotIdx name
-                           enumName = drop (dotIdx + 1) name
-                       iface <- find ((== ifaceName) . RT.interfaceName) oldInterfaces
-                       find ((== enumName) . RT.enumName) (RT.interfaceEnums iface)
+                           eName = drop (dotIdx + 1) name
+                       iface <- find ((== ifaceName) . interfaceName) oldInterfaces
+                       find ((== eName) . enumName) (interfaceEnums iface)
                     of
                     Nothing -> throwM $ NoSuchEnumException name
                     Just x  -> return $ Just x
               | otherwise =
-                  case find ((== name) . KT.enumName) enums of
+                  case find ((== name) . enumName) enums of
                     Nothing -> throwM $ NoSuchEnumException name
                     Just x  -> return $ Just x
             enumByName Nothing = return Nothing
 
-untieProtocol :: KT.Protocol -> RT.Protocol
-untieProtocol (KT.Protocol oldInterfaces) = RT.Protocol newInterfaces
+untieProtocol :: KnotProtocol -> XMLProtocol
+untieProtocol (Protocol n d oldInterfaces c) = Protocol n d newInterfaces c
   where
-    newInterfaces :: [RT.Interface]
+    newInterfaces :: [XMLInterface]
     newInterfaces = map untieInterface oldInterfaces
-    untieInterface :: KT.Interface -> RT.Interface
-    untieInterface (KT.Interface iname version requests events enums)
-      = RT.Interface
+    untieInterface :: DirectInterface -> XMLInterface
+    untieInterface (Interface iname descr version requests events enums)
+      = Interface
           iname
+          descr
           version
           (map untieMessage requests)
           (map untieMessage events)
           enums
       where
-        untieMessage :: KT.Message -> RT.Message
-        untieMessage (KT.Message name args destructor since)
-          = RT.Message
+        untieMessage :: KnotMessage -> XMLMessage
+        untieMessage (Message name args mdescr destructor since)
+          = Message
               name
               (map untieArgument args)
+              mdescr
               destructor
               since
-        untieArgument :: KT.Argument -> RT.Argument
-        untieArgument (KT.Argument name argtype nullable summary)
-          = RT.Argument
+        untieArgument :: KnotArgument -> XMLArgument
+        untieArgument (Argument name argtype nullable summary)
+          = Argument
               name
               (case argtype of
-                 KT.ArgProtDataBox tp x -> RT.ArgProtDataBox tp (untieArgType tp x))
+                 ArgProtDataBox tp x -> ArgProtDataBox tp (untieArgType tp x))
               nullable
               summary
-        untieArgType :: SArgumentType t -> KT.ArgProtData t -> RT.ArgProtData t
+        untieArgType :: SArgumentType t -> ArgProtData ArgEnum KnotInterface t -> ArgProtData String String t
         untieArgType SIntWAT Nothing = Nothing
-        untieArgType SIntWAT (Just x) = Just (KT.enumName x)
+        untieArgType SIntWAT (Just x) = Just $ enumName x
         untieArgType SUIntWAT Nothing = Nothing
-        untieArgType SUIntWAT (Just x) = Just (KT.enumName x)
+        untieArgType SUIntWAT (Just x) = Just $ enumName x
         untieArgType SFixedWAT x = x
         untieArgType SStringWAT x = x
         untieArgType SObjectWAT Nothing = Nothing
-        untieArgType SObjectWAT (Just x) = Just (KT.interfaceName x)
+        untieArgType SObjectWAT (Just x) = Just $ interfaceName $ unFix x
         untieArgType SNewIdWAT Nothing = Nothing
-        untieArgType SNewIdWAT (Just x) = Just (KT.interfaceName x)
+        untieArgType SNewIdWAT (Just x) = Just $ interfaceName $ unFix x
         untieArgType SArrayWAT x = x
         untieArgType SFdWAT x = x
