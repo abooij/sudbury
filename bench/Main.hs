@@ -41,7 +41,7 @@ instance Q.Arbitrary B.ByteString where
     return . toStrict . toLazyByteString . mconcat $ map BB.word8 someBytes
 
 instance Q.Arbitrary WirePackage where
-  arbitrary = do
+  arbitrary = Q.sized $ \ n -> do
     sender <- Q.arbitrary
     opcode <- Q.arbitrary
     payload <- Q.arbitrary
@@ -54,7 +54,10 @@ instance Q.Arbitrary WirePackage where
       }
 
 instance Q.Arbitrary WirePackageStream where
-  arbitrary = WirePackageStream <$> Q.arbitrary
+  arbitrary = Q.sized $ \ n ->
+    do k <- Q.choose (1000, 1000)
+       WirePackageStream <$> replicateM k Q.arbitrary
+
 
 -- | Newtype wrapper for the binary format of Wayland. Allows
 -- us to construct arbitrary messages from n WirePackages with
@@ -69,7 +72,7 @@ instance Show WirePackageBinary where
 
 instance Q.Arbitrary WirePackageBinary where
   arbitrary = Q.sized $ \ n ->
-    do k <- Q.choose (0, n)
+    do k <- Q.choose (1000, 1000)
        WirePackageBinary . B.concat <$> replicateM k genAlignedWp
     where
       genAlignedWp :: Q.Gen B.ByteString
@@ -83,6 +86,8 @@ parseWirePackage = do
   opcode <- anyWord16he
   size   <- anyWord16he
   payload <- A.take (fromIntegral size - 8)
+  let offset = fromIntegral size `mod` 4
+  A.take offset
   return WirePackage { wirePackageSender  = sender
                  , wirePackageSize    = size
                  , wirePackageOpcode  = opcode
@@ -93,8 +98,8 @@ pkgStream' :: A.Parser [WirePackage]
 pkgStream' = A.many' parseWirePackage
 
 
-randomWirePackage :: IO [WirePackage]
-randomWirePackage = Q.generate $ Q.vectorOf 100 (Q.arbitrary :: Q.Gen WirePackage)
+randomWirePackage :: IO [WirePackageStream]
+randomWirePackage = Q.generate $ Q.vectorOf 100 (Q.arbitrary :: Q.Gen WirePackageStream)
 
 randomByteString :: IO [B.ByteString]
 randomByteString = Q.generate $ fmap unWpBin <$> Q.vectorOf 100 (Q.arbitrary :: Q.Gen WirePackageBinary)
@@ -104,12 +109,18 @@ decodeAttos = unsafeRight . A.parseOnly (A.many' parseWirePackage)
 
 unsafeRight (Right a) = a
   
-encodeBS :: WirePackage -> B.ByteString
-encodeBS = toStrict . toLazyByteString . wirePack 
+encodeBS :: WirePackageStream -> B.ByteString
+encodeBS = toStrict . toLazyByteString . foldMap wirePack . unWirePackageStream
 
-decodedWorking = do
-  a <- randomWirePackage
-  print $ map (decodeEx . encodeBS) a == a
+
+ensureDecodersEqual = do
+  rb <- randomByteString
+  let decode' :: B.ByteString -> [WirePackage]
+      decode' = fromRight . decodeMany
+      wp1 = map decode' rb
+      wp2 = map decodeAttos rb
+      res = zipWith (\x y -> if x == y then (True, x, y) else (False, x, y)) wp1 wp2
+  return $ filter (\(x, _, _) -> x == False) res
 
 
 

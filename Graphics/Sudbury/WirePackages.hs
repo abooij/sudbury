@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-|
 Module      : Graphics.Sudbury.WirePackages
 Description : Reads ByteStrings into packages containing individual messages
@@ -7,7 +8,6 @@ Maintainer  : auke@tulcod.com
 Stability   : experimental
 Portability : POSIX
 -}
-{-# LANGUAGE BangPatterns #-}
 module Graphics.Sudbury.WirePackages where
 
 import Data.Word
@@ -21,6 +21,7 @@ import qualified Data.ByteString.Internal as B
 import qualified Data.ByteString.Builder as BB
 import System.IO.Unsafe (unsafePerformIO)
 
+
 import Control.Monad
 import Foreign.Ptr (minusPtr, plusPtr, Ptr)
 import Foreign.ForeignPtr (ForeignPtr, withForeignPtr, castForeignPtr)
@@ -29,12 +30,16 @@ import Control.Exception (Exception(..), throwIO, try)
 
 
 
+
 data WirePackage = WirePackage
   { wirePackageSender  :: Word32
   , wirePackageSize    :: Word16
   , wirePackageOpcode  :: Word16
   , wirePackagePayload :: B.ByteString
-  } deriving (Eq, Show)
+  } deriving (Eq)
+
+instance Show WirePackage where
+  show (WirePackage se sz op pl) = "Sender: " ++ show se ++ "\nSize: " ++ show sz ++ "\nOp: " ++ show op
 
 -- | Storable that writes in the Wayland binary format.
 -- Allows us to use the optimized machinery from Data.Store
@@ -105,14 +110,24 @@ decodeIOWithMany mypeek (B.PS x s len) =
 {-# INLINE decodeIOWithMany #-}
 
 decodeIOWithFromPtrMany :: Peek a -> Ptr Word8 -> Int -> IO [a]
-decodeIOWithFromPtrMany mypeek ptr len = do
-  if len < 8
+decodeIOWithFromPtrMany !mypeek !ptr !len = do
+  if len == 0
      then return []
      else do
          (offset, x) <- decodeIOPortionWithFromPtr mypeek ptr len
-         (x : ) <$> decodeIOWithFromPtrMany mypeek (ptr `plusPtr` offset) (len - offset)
+         liftM2' (:) (return x) $ decodeIOWithFromPtrMany mypeek (ptr `plusPtr` offset) (len - offset)
        --throwIO $ PeekException (len - offset) "Didn't consume all input."
 {-# INLINE decodeIOWithFromPtrMany #-}
+
+-- | A version of 'liftM2' that is strict in the result of its first
+-- action.
+liftM2' :: (Monad m) => (a -> b -> c) -> m a -> m b -> m c
+liftM2' f a b = do
+  !x <- a
+  y <- b
+  return (f x y)
+{-# INLINE liftM2' #-}
+    
 
 wirePack :: WirePackage -> BB.Builder
 wirePack = BB.byteString . encode
