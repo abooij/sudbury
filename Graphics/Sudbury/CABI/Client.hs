@@ -945,13 +945,13 @@ display_read_events proxyP = withStablePtr proxyP $ \proxy -> do
       fd_queue <- newTQueueIO
       atomically $ mapM_ (writeTQueue fd_queue) fds
 
-      let pkgsParse = (S.decode bytes :: Either S.PeekException WirePackageStream)
+      let pkgsParse = (decodeMany bytes :: Either S.PeekException [WirePackage])
       pkgs <-
         case pkgsParse of
           Left err ->
             error ("Package parse failed: " ++ show err)
           Right x -> return x
-      mapM_ (queue_package dd fd_queue) (unWirePackageStream pkgs)
+      mapM_ (queue_package dd fd_queue) pkgs
 
       atomically $ putTMVar (displayInFd dd) fd
       return 0
