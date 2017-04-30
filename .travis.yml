@@ -1,0 +1,12 @@
+script:
+ - wget https://raw.github.com/ndmitchell/hlint/master/misc/travis.sh -O - --quiet | sh -s .
+
+matrix:
+   include:
+    - os: linux
+      sudo: required
+   allow_failures:
+    - os: linux
+
+notifications:
+   email: false
