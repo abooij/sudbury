@@ -1,4 +1,4 @@
-Sudbury
+Sudbury [![Build Status on Travis CI](https://travis-ci.org/abooij/sudbury.svg?branch=master)](https://travis-ci.org/abooij/sudbury)
 ===
 The Haskell bindings to the C wayland library are ugly and are not able to satisfy every need.
 Ultimately, this seems to be due to the nature of the libwayland API: it hides as many implementation details as it can, and only exposes a minimal API, for a specific use case (namely compositors and windowed clients).
