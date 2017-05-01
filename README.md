@@ -1,5 +1,15 @@
 Sudbury [![Build Status on Travis CI](https://travis-ci.org/abooij/sudbury.svg?branch=master)](https://travis-ci.org/abooij/sudbury)
 ===
+A haskell implementation of the Wayland protocol. Any implementation of the Wayland protocol needs to support _some_ C ABI calls if it wants to support EGL, so we just aim to implement the entire C ABI.
+
+Where's the sample code of this Haskell library?
+---
+At this stage, most work has gone into preliminaries and supporting the C client ABI. That means that this is a piece of really elegant Haskell code that can only really be used by C wayland clients. In other words, this project is currently a drop-in replacement of `libwayland-client.so` (as of commit 24e5b89, all weston clients seem to run correctly).
+
+However, the aim is to write a really nice Haskell interface so that you can write all your Wayland programs in elegant Haskell. See issue #2 for progress on the usability of this code in Haskell. See issue #3 for progress on the C ABI for compositors (making this a drop-in replacement of `libwayland-server.so`, thus a replacement of the original C wayland code).
+
+Philosophy
+---
 The Haskell bindings to the C wayland library are ugly and are not able to satisfy every need.
 Ultimately, this seems to be due to the nature of the libwayland API: it hides as many implementation details as it can, and only exposes a minimal API, for a specific use case (namely compositors and windowed clients).
 
@@ -45,14 +55,6 @@ $ cabal exec weston-dnd
   - The wayland objects all have a corresponding "interface" which is much like a type. Hence, we should use some fancy Haskell features to make the API more strongly typed than libwayland's.
 - Organise the code so that we can do extensive testing and benchmarking.
   - Because of the functional coding style, we will be able to test many more aspects of our code than libwayland.
-
-Status (September 2016)
----
-So far, the main focus is implementing a C ABI for the client side.
-As of commit 24e5b89, all weston demo clients run correctly (but please report any clients that work with libwayland but not with sudbury).
-The Haskell API is still rather limited (see issue #2 for progress), and the server side ABI has not yet been written (see issue #3 for progress).
-
-This all means that you should be able to use sudbury as a drop-in replacement for wayland clients, but not yet for wayland compositors. And while some code is in place to be able to write wayland programs in Haskell, much more functionality is planned.
 
 Contributing
 ---
