@@ -2,9 +2,9 @@ These are some of my notes in an attempt to understand wayland/libwayland
 
 Overview
 ===
-libayland is a library written in C that implements the wayland protocol. The library has two variants, one which is linked to by the client (which typically e.g. wants to draw a window), and one which is linked to by the server (aka compositor). Essentially the only job of the wayland protocol is to pass messages and set up shared memory buffers. The messages can contain events and requests like:
+libwayland is a library written in C that implements the wayland protocol. The library has two variants, one which is linked to by the client (which typically e.g. wants to draw a window), and one which is linked to by the server (aka compositor). Essentially the only job of the wayland protocol is to pass messages and set up shared memory buffers. The messages can contain events and requests like:
 - "the mouse just moved to position this and that"
-- "can you please put this window over there?" 
+- "can you please put this window over there?"
 - "the user just plugged in another monitor with such and so dimensions"
 
 The shared memory buffers are used to exchange bulk data, usually screen drawings. Memory buffers are shared by sending a message that contains an `fd` that maps to a piece of RAM.
@@ -29,7 +29,7 @@ Terminology
 - Protocol: libwayland's API consists of a relatively small set of semi-fixed utility functions (wayland-client.h, wayland-server.h, wayland-util.h, wayland-egl.h, wayland-version.h). The remainder is specified by a list of interfaces that one can interact with via the wayland protocol, specified by XML files. E.g., there is a "wl\_pointer" interface with a "motion" event with a "time" argument, and "surface\_x" and "surface\_y" coordinate arguments. The wl\_pointer represents a pointer device, and the motion event signals that its position changed. Objects of type wl\_surface are drawing surfaces, wl\_keyboard represent physical keyboards. And so forth.
 
   A protocol is specified by a list of interfaces. An interface is specified by a list of events and requests. A message is specified by a list of arguments. Arguments are primarily defined by a name and a type (e.g. integers, byte strings, or other objects). When sending a message, you have to specify which object to send a message on (by passing its ID), and the value of the arguments.
-  
+
   Several protocols may be used on the same connection. An object of interface wl\_registry is used to negotiate which interfaces are used. The server offers a list of interfaces to the client, and then the client can choose to make use of them or not.
 - Proxy: the client-side representation of a wayland object
 - Resource: the server-side representation of a wayland object, but also used to refer to the object that both sides have handles to (ie. as a synonym for "wayland object")
