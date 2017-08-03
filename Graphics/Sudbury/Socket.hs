@@ -19,16 +19,14 @@ import qualified Network.Socket as S hiding (send, sendTo, recv, recvFrom)
 
 findServerSocket :: IO FilePath
 findServerSocket = do
-  dir <- getEnv "XDG_RUNTIME_DIR"
   socketName <- getEnv "WAYLAND_DISPLAY"
-  return $ dir </> socketName
+  findServerSocketWithName socketName
 
 -- | As per the C implementation: XDG_RUNTIME_DIR is obligatory, but WAYLAND_DISPLAY is optional
 findServerSocketWithDefault :: IO FilePath
 findServerSocketWithDefault = do
-  dir <- getEnv "XDG_RUNTIME_DIR"
   socketName <- catchIOError (getEnv "WAYLAND_DISPLAY") (\_ -> return "wayland-0")
-  return $ dir </> socketName
+  findServerSocketWithName socketName
 
 findServerSocketWithName :: String -> IO FilePath
 findServerSocketWithName name = do
