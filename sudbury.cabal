@@ -14,7 +14,7 @@ copyright:           Auke Booij, 2015-2017
 category:            Graphics
 build-type:          Simple
 extra-source-files:  README.md, cbits/wayland-msg-handling.h
-cabal-version:       >=1.25
+cabal-version:       >=2.0.0.2
 
 source-repository head
   type: git
