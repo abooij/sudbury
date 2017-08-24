@@ -2,11 +2,19 @@ Sudbury [![Build Status on Travis CI](https://travis-ci.org/abooij/sudbury.svg?b
 ===
 A haskell implementation of the Wayland protocol. Any implementation of the Wayland protocol needs to support _some_ C ABI calls if it wants to support EGL, so we just aim to implement the entire C ABI.
 
-Where's the sample code of this Haskell library?
+FAQ: Where's the sample code of this Haskell library?
 ---
 At this stage, most work has gone into preliminaries and supporting the C client ABI. That means that this is a piece of really elegant Haskell code that can only really be used by C wayland clients. In other words, this project is currently a drop-in replacement of `libwayland-client.so` (as of commit 24e5b89, all weston clients seem to run correctly).
 
 However, the aim is to write a really nice Haskell interface so that you can write all your Wayland programs in elegant Haskell. See issue #2 for progress on the usability of this code in Haskell. See issue #3 for progress on the C ABI for compositors (making this a drop-in replacement of `libwayland-server.so`, thus a replacement of the original C wayland code).
+
+FAQ: This won't work because the libwayland C library assumes it's in charge
+---
+This library builds its own dynamic object (see the `foreign-library` section in `sudbury.cabal`). If you have a piece of C code which calls into C libwayland code, and it doesn't do e.g. hacky pointer arithmetic, then it will work equally well with sudbury. If not, report a bug.
+
+In other words, this project is supposed to be an ABI-compatible drop-in replacement to the C project.
+
+(Currently, it's client side only, because developer time is finite. But the server side should be doable as well.)
 
 Philosophy
 ---
