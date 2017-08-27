@@ -22,9 +22,10 @@ digraph arch_wayland {
   subgraph cluster_app1 {
     label="Wayland application"
 
+    egl_h [label="libEGL.so"]
     user_h [label="Haskell user code"]
     user_c [label="C user code"]
-    { rank=same; user_h, user_c }
+    { rank=same; user_h, user_c, egl_h }
 
     user_h -> user_c [style=dotted, arrowtail=normal]
 
@@ -38,6 +39,9 @@ digraph arch_wayland {
     user_c -> front_c
     front_c -> user_c
 
+    front_c -> egl_h
+    egl_h -> front_c
+
     core [label="Core sudbury"]
 
     {front_h, front_c} -> core
@@ -49,7 +53,12 @@ digraph arch_wayland {
 
     user_c2 [label="C user code"]
 
+    egl_c [label="libEGL.so"]
+
     libwl [label=<freedesktop.org<BR/>libwayland_client.so<BR/>libwayland_server.so>]
+
+    egl_c -> libwl
+    libwl -> egl_c
 
     user_c2 -> libwl
     libwl -> user_c2
