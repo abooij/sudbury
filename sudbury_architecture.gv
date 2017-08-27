@@ -30,7 +30,7 @@ digraph arch_wayland {
     user_h -> user_c [style=dotted, arrowtail=normal]
 
     front_h [label=<sudbury<BR/>Haskell library<BR/>front-end>]
-    front_c [label=<sudbury<BR/>libwayland_client.so<BR/>libwayland_server.so>]
+    front_c [label=<sudbury<BR/>libwayland-client.so<BR/>libwayland-server.so>]
     { rank=same; front_h, front_c }
 
     user_h -> front_h
@@ -55,7 +55,7 @@ digraph arch_wayland {
 
     egl_c [label="libEGL.so"]
 
-    libwl [label=<freedesktop.org<BR/>libwayland_client.so<BR/>libwayland_server.so>]
+    libwl [label=<freedesktop.org<BR/>libwayland-client.so<BR/>libwayland-server.so>]
 
     egl_c -> libwl
     libwl -> egl_c
