@@ -1,0 +1,70 @@
+digraph arch_wayland {
+  edge[
+    fontname="DejaVu Sans",
+    dir="both",
+    arrowtail="dot",
+    arrowsize=.5,
+    fontname="DejaVu Sans",
+    fontsize="18",
+  ]
+
+  node[
+    color=none,
+    fontname="DejaVu Sans",
+    fontsize="18",
+    shape=box,
+    style="rounded,filled",
+    fillcolor="#ffbc00"
+  ]
+
+  newrank=true
+
+  subgraph cluster_app1 {
+    label="Wayland application"
+
+    user_h [label="Haskell user code"]
+    user_c [label="C user code"]
+    { rank=same; user_h, user_c }
+
+    user_h -> user_c [style=dotted, arrowtail=normal]
+
+    front_h [label=<sudbury<BR/>Haskell library<BR/>front-end>]
+    front_c [label=<sudbury<BR/>libwayland_client.so<BR/>libwayland_server.so>]
+    { rank=same; front_h, front_c }
+
+    user_h -> front_h
+    front_h -> user_h
+
+    user_c -> front_c
+    front_c -> user_c
+
+    core [label="Core sudbury"]
+
+    {front_h, front_c} -> core
+    core -> {front_h, front_c}
+  }
+
+  subgraph cluster_app2 {
+    label="Wayland application"
+
+    user_c2 [label="C user code"]
+
+    libwl [label=<freedesktop.org<BR/>libwayland_client.so<BR/>libwayland_server.so>]
+
+    user_c2 -> libwl
+    libwl -> user_c2
+  }
+  { rank=min; user_c2, user_c }
+  { rank=same; libwl, core }
+
+  core -> libwl [style=dotted, arrowtail=normal, label="IPC socket"]
+
+  subgraph cluster_os {
+    label="OS"
+
+    ram [shape=record, label=<shared memory buffers<BR/>and devices>]
+  }
+  ram -> {core, libwl}
+  ram -> libwl [style=invis, label=" "]
+  {core, libwl} -> ram
+}

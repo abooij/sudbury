@@ -2,6 +2,8 @@ Sudbury [![Build Status on Travis CI](https://travis-ci.org/abooij/sudbury.svg?b
 ===
 A haskell implementation of the Wayland protocol. Any implementation of the Wayland protocol needs to support _some_ C ABI calls if it wants to support EGL, so we just aim to implement the entire C ABI.
 
+![Sudbury architecture](sudbury_architecture.png)
+
 FAQ: Where's the sample code of this Haskell library?
 ---
 At this stage, most work has gone into preliminaries and supporting the C client ABI. That means that this is a piece of really elegant Haskell code that can only really be used by C wayland clients. In other words, this project is currently a drop-in replacement of `libwayland-client.so` (as of commit 24e5b89, all weston clients seem to run correctly).
